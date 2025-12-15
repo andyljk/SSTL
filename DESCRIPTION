@@ -1,0 +1,20 @@
+Package: NTL
+Title: Bayesian Transfer Learning via Neuronized Priors
+Version: 0.0.0.9000
+Authors@R:
+    person("Jiakun", "Li", email = "li003453@umn.edu", role = c("aut", "cre"))
+Description: Implements Bayesian transfer learning for high-dimensional
+    regression models using elliptical slice sampling algorithms, 
+    with optimized C++ backends for scalable computation.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
+Imports:
+    mvnfast,
+    MCMCpack,
+    stats,
+    Rcpp
+LinkingTo:
+    Rcpp,
+    RcppArmadillo
