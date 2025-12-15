@@ -354,7 +354,7 @@ Gen_AR1 <- function(n,p,rho) {
 #' @export
 sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
                     sparse_level=0.1, effect_size=0.5, X_cor=0.5,
-                    bias_level=5, bad_bias = 5){
+                    prop_bias=0.2,bias_level=5, bad_bias = 5){
   p_0   = round(p*sparse_level) # non-zero true coefficients
   sd_y = 1
   good = c(1:info_set)
@@ -369,7 +369,7 @@ sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
   # generate source data
   for (s in 1:S){
     b_s[,s] = b_T + bad_bias
-    if (s %in% good) b_s[,s] = b_T + rnorm(p,0,bias_level/p)
+    if (s %in% good) b_s[,s] = b_T + b_T + rbinom(p,1,prop_bias)*(2*rbinom(p,1,0.5)-1)*bias_level/p
     X_s[[s]] = Gen_AR1(n_s,p,rho=X_cor) # AR1
     Y_s[[s]] = X_s[[s]] %*% b_s[,s] + rnorm(n_s,0,1)
   }
