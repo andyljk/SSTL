@@ -12,6 +12,7 @@ sim_data(
   info_set = round(S/2),
   sparse_level = 0.1,
   effect_size = 0.5,
+  X_cor = 0.5,
   bias_level = 5,
   bad_bias = 5
 )

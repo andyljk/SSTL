@@ -351,13 +351,13 @@ Gen_AR1 <- function(n,p,rho) {
 #' }
 #' @export
 sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
-                    sparse_level=0.1, effect_size=0.5,
+                    sparse_level=0.1, effect_size=0.5, X_cor=0.5,
                     bias_level=5, bad_bias = 5){
   p_0   = round(p*sparse_level) # non-zero true coefficients
   sd_y = 1
   good = c(1:info_set)
   b_T    = c(rep(effect_size,p_0), rep(0, p-p_0)) # true parameter, first 5 nonzero, the rest 100 are zero
-  X_T    = matrix(rnorm(p*n_t), n_t,p) # randomly generate some covariates
+  X_T    = Gen_AR1(n_t,p,rho=X_cor) # AR1 correlated covars
   Y_T    = X_T%*%b_T + rnorm(n_t,0,sd_y) # true response data
 
   b_s = array(NA,dim=c(p,S))
@@ -368,7 +368,7 @@ sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
   for (s in 1:S){
     b_s[,s] = b_T + bad_bias
     if (s %in% good) b_s[,s] = b_T + rnorm(p,0,bias_level/p)
-    X_s[[s]] = matrix(rnorm(p*n_s), n_s,p) # randomly generate some covariates
+    X_s[[s]] = Gen_AR1(n_s,p,rho=X_cor) # AR1
     Y_s[[s]] = X_s[[s]] %*% b_s[,s] + rnorm(n_s,0,1)
   }
   return(list(X_T=X_T,
@@ -379,131 +379,3 @@ sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
               b_s=b_s))
 }
 
-# # data (S source studies)
-# set.seed(456)
-# p     = 200 # dimension of parameter
-# n_t   = 100  # target sample size
-# n_s   = 200 # source sample size
-# p_0   = p/10 # non-zero true coefficients
-# sd_y = 1
-#
-# S = 10; good = c(1:10)
-#
-# b_T    = c(rep(0.5,p_0), rep(0, p-p_0)) # true parameter, first 5 nonzero, the rest 100 are zero
-# X_T    = matrix(rnorm(p*n_t), n_t,p) # randomly generate some covariates
-# Y_T    = X_T%*%b_T + rnorm(n_t,0,sd_y) # true response data
-#
-# var(Y_T - X_T%*%b_T) # oracle sample variance
-#
-# b_s = array(NA,dim=c(p,S))
-# X_s = vector(mode="list",length=S)
-# Y_s = vector(mode="list",length=S)
-#
-# # generate source data
-# for (s in 1:S){
-#   b_s[,s] = b_T + c(rep(-1,8),rep(0,50),rep(1,92))*(2*rbinom(p,1,0.5)-1)
-#   if (s %in% good) b_s[,s] = b_T + rnorm(p,0,5/p)
-#   X_s[[s]] = matrix(rnorm(p*n_s), n_s,p) # randomly generate some covariates
-#   Y_s[[s]] = X_s[[s]] %*% b_s[,s] + rnorm(n_s,0,3)
-# }
-#
-# # setup inputs for MCMC
-# sd.t = sqrt(c(rep(0.15, p), rep(1,p), 1)) # prior variances for target parameters
-# bt.c = c(rnorm(2*p+1, 0, sd.t)) # current state for target par: [w_T,a_T,a_0]
-# lambda_T = p^0.5
-# lambda_s = c(50,50)
-# bs.c = replicate(S, rnorm(2*p+1, 0, c(rep(0.05,p),rep(1,p+1)))) # [[w_1^T,a_1^T,a_10^T]^T,..,[w_S^T,a_S^T,a_S0^T]^T]
-#
-# # lam_prior = ESS.Gibbs.EB(X_T,Y_T,X_s,Y_s,bt.c=bt.c, bs.c=bs.c, LL=L.tl,
-# #                          id=id, sd_T=sd.t, sd_S=sd.s,
-# #                          v_0=S+1, W_0, cov_W,
-# #                          N=1000, S.max=100, burn_iter=10)
-# lam_prior = EB_Gibbs_SAEM(X_T,Y_T,X_s,Y_s,
-#                                  N=10000,
-#                                  gamma_power = 0.9,
-#                                  K_block=10,
-#                                  schedule = 0.5)
-# par(mfrow=c(3,2), mar=c(3,3,1,1))
-# plot(lam_prior$mc.lam[,1])
-# plot(lam_prior$mc.lam[,2])
-# plot(lam_prior$mc.lam[,3])
-# lambda_T = lam_prior$final_lam[1]; lambda_s = lam_prior$final_lam[-1]
-#
-# t0   = Sys.time()
-# MC   = ESS_Gibbs_TL(X_T,Y_T,X_s,Y_s,
-#                     bt.c=bt.c, bs.c=bs.c, sd_T=sd.t,
-#                     lambda_T=lambda_T, lambda_s=lambda_s,
-#                     N=10000,verbose=1)
-# t1    = Sys.time()
-# print(t1-t0, digits = 2)
-#
-# MC.b  = t(apply(MC$mc.bt, 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
-# MC.b1 = t(apply(t(MC$mc.bs[,1,]), 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_s[1]) )  ))
-# MC.b2 = t(apply(t(MC$mc.bs[,2,]), 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_s[2]) )  ))
-# MC.alp = t(apply(MC$mc.bt[5000:10000,], 1, function(b) T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
-# MC.alp1 = t(apply(t(MC$mc.bs[,1,5000:10000]), 1, function(b) T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_s[1]) )  ))
-# alp_pm = colMeans(MC.alp==0)
-# alp_pm2 = colMeans(MC.alp1==0)
-#
-#
-# par(mfrow=c(3,2), mar=c(3,3,1,1));
-# boxplot(MC.b[5000:10000,1:p], outline=F, ylim=c(-.2, 1.3)); hist(MC$n.t)
-# boxplot(MC.b1[5000:10000,1:p], outline=F); hist(MC$n.s)
-# boxplot(MC.b2[5000:10000,1:p], outline=F); hist(MC$n.s)
-# # mean(apply(MC.b[5000:10000,1:p], 1, function(b) sum((b-b_T)^2) ))
-#
-# mean(MC$mc.tau2_wT)
-# apply(MC$mc.covW, c(1, 2), mean)
-#
-# roc_obj <- roc(b_T, 1-alp_pm)
-# auc_value <- auc(roc_obj)
-# # plot(roc_obj, main = "ROC Curve", col = "blue", lwd = 2)
-#
-#
-# b_tl = colMeans(MC.b[5000:10000,])
-# sum((b_tl - b_T)^2)/sum(b_T^2)
-#
-# mean(MC$mc.s2_T)
-# var(Y_T - X_T%*%b_tl)
-#
-# # compare with glmTrans
-# library(glmnet)
-# library(glmtrans)
-#
-#
-# dat = list()
-# dat$target$x = X_T; dat$target$y = as.numeric(Y_T)
-#
-# dat$source = vector(mode="list",length=S)
-# for (s in 1:S){
-#   dat$source[[s]]$x = X_s[[s]]; dat$source[[s]]$y = as.numeric(Y_s[[s]])
-# }
-#
-# # oracle model (OLS on true support)
-# beta_o = solve(t(X_T[,1:p_0])%*%X_T[,1:p_0])%*%t(X_T[,1:p_0])%*%Y_T
-# sum((beta_o - b_T[1:p_0])^2)/sum(b_T[1:p_0]^2)
-#
-# # fit lasso on target data
-# fit.lasso = cv.glmnet(x = X_T, y = Y_T, intercept = FALSE)
-# beta_lasso = coef(fit.lasso, s = "lambda.1se")[-1]
-# sum((beta_lasso - b_T)^2)/sum(b_T^2)
-#
-# # fit glmtrans
-# fit_trans = glmtrans(dat$target, dat$source, intercept=FALSE, transfer.source.id = 'auto')
-# beta_trans = fit_trans$beta[-1]
-# sum((beta_trans - b_T)^2)/sum(b_T^2)
-#
-#
-#
-#
-#
-#
-#
-# # test data
-#
-# X_test = matrix(rnorm(p*n_t), n_t,p) # randomly generate some covariates
-# Y_test = X_test%*%b_T + rnorm(n_t,0,sd_y) # true response data
-#
-# mean((Y_test - X_test%*%b_T)^2)
-# mean((Y_test - X_test%*%b_tl)^2)
-# mean((Y_test - X_test%*%beta_trans)^2)
