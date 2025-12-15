@@ -130,8 +130,10 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
 
   # calculate beta
   MC.beta  = t(apply(mc.bt, 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
+  MC.alp = t(apply(mc.bt, 1, function(b) T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
 
   return(list(MC_beta = MC.beta,
+              MC_alpha = MC.alp,
               mc.bt=mc.bt,
               mc.bs=mc.bs,
               n.t=N.t, n.s=N.s,
