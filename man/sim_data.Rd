@@ -13,6 +13,7 @@ sim_data(
   sparse_level = 0.1,
   effect_size = 0.5,
   X_cor = 0.5,
+  prop_bias = 0.2,
   bias_level = 5,
   bad_bias = 5
 )

@@ -369,7 +369,7 @@ sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
   # generate source data
   for (s in 1:S){
     b_s[,s] = b_T + bad_bias
-    if (s %in% good) b_s[,s] = b_T + b_T + rbinom(p,1,prop_bias)*(2*rbinom(p,1,0.5)-1)*bias_level/p
+    if (s %in% good) b_s[,s] = b_T + rbinom(p,1,prop_bias)*(2*rbinom(p,1,0.5)-1)*bias_level/p
     X_s[[s]] = Gen_AR1(n_s,p,rho=X_cor) # AR1
     Y_s[[s]] = X_s[[s]] %*% b_s[,s] + rnorm(n_s,0,1)
   }
