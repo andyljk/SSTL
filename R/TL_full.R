@@ -1,5 +1,7 @@
 
-# elliptical slice sampling within gibbs function
+#' ESS-within-Gibbs sampler for Bayesian transfer learning of HD linear regression models.
+#'
+#' Runs elliptical slice sampling updates for target parameters and source biases.
 #'
 #' @param X_T Target design matrix.
 #' @param Y_T Target response.
@@ -143,9 +145,15 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
   )
 }
 
-# stochastic version
+#' Empirical Bayes estimation of prior spike probabilities of the SpSL model
+#'
+#' Run a stochastic EM algorithm
 #'
 #' @inheritParams ESS_Gibbs_TL
+#' @param gamma_power Robbins–Monro step-size exponent for SAEM updates.
+#' @param lr Learning rate for lambda updates.
+#' @param K_block Block size (iterations) per SAEM update.
+#' @param schedule Exponent controlling learning-rate decay (e.g., lr / t^schedule).
 #' @return A list containing MCMC draws and lambda trajectories.
 #' @export
 EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
@@ -314,14 +322,14 @@ beta  = function(b,lambda,p) b[1:p]*T.n(b[(p+1):(2*p)]-qnorm(pnorm(b[2*p+1])^(1/
 
 # function to generate correlated covariates
 #'
-#' Generates an \(n \times p\) design matrix with AR(1) correlation
+#' Generates an \eqn{n \times p} design matrix with AR(1) correlation
 #' structure among covariates.
 #'
 #' @param n Number of observations.
 #' @param p Number of covariates.
 #' @param rho AR(1) correlation parameter (must be in (-1, 1)).
 #'
-#' @return A numeric matrix of dimension n x p.
+#' @return A numeric matrix of dimension \eqn{n \times p}.
 #' @export
 Gen_AR1 <- function(n,p,rho) {
   if (abs(rho) >= 1) stop("rho must be in (-1, 1).")

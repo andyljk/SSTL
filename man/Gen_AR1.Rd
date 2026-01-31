@@ -2,7 +2,7 @@
 % Please edit documentation in R/TL_full.R
 \name{Gen_AR1}
 \alias{Gen_AR1}
-\title{Generates an \(n \times p\) design matrix with AR(1) correlation
+\title{Generates an \eqn{n \times p} design matrix with AR(1) correlation
 structure among covariates.}
 \usage{
 Gen_AR1(n, p, rho)
@@ -15,9 +15,9 @@ Gen_AR1(n, p, rho)
 \item{rho}{AR(1) correlation parameter (must be in (-1, 1)).}
 }
 \value{
-A numeric matrix of dimension n x p.
+A numeric matrix of dimension \eqn{n \times p}.
 }
 \description{
-Generates an \(n \times p\) design matrix with AR(1) correlation
+Generates an \eqn{n \times p} design matrix with AR(1) correlation
 structure among covariates.
 }
