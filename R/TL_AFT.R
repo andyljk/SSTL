@@ -295,30 +295,3 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
               mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s)))
 }
 
-calc_bias <- function(mat,p,lam_s){
-  w_mat = mat[1:p, , drop=FALSE]
-  alp_mat = mat[(p+1):(2*p), , drop=FALSE]
-  thres_vec = rep(a0_star(mat[2*p + 1, ], lam_s), each = p)
-  thres_mat = matrix(thres_vec, nrow = p, ncol = ncol(mat))
-  return(w_mat * pmax(alp_mat - thres_mat, 0))
-}
-# mat[1:p, ] * pmax(mat[(p+1):(2*p), ] - rep(a0_star(mat[2*p + 1, ],lam_s), each = p), 0)
-
-a0_star <- function(a0_raw,lam) {
-  # This calculates a_0* = Phi_inv( Phi(a0_raw)^(1/p) )
-  return(qnorm(pnorm(a0_raw)^(1/lam)))
-}
-
-T.n   = function(b) pmax(b, 0)
-beta = function(b, lambda, p) {
-  w = b[1:p]; a = b[(p+1):(2*p)]; a0 = b[2*p+1]
-  return(w * T.n(a - a0_star(a0, lambda)))
-}
-
-# function to generate correlated covariates
-Gen_AR1 <- function(n,p,rho) {
-  if (abs(rho) >= 1) stop("rho must be in (-1, 1).")
-  Sigma  <- toeplitz(rho^(0:(p -1)))          # AR(1) covariance
-  MASS::mvrnorm(n, mu=rep(0,p), Sigma=Sigma)
-}
-

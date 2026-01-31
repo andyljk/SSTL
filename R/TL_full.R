@@ -302,41 +302,6 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
 }
 
 
-calc_bias <- function(mat,p,lam_s){
-  w_mat = mat[1:p, , drop=FALSE]
-  alp_mat = mat[(p+1):(2*p), , drop=FALSE]
-  thres_vec = rep(a0_star(mat[2*p + 1, ], lam_s), each = p)
-  thres_mat = matrix(thres_vec, nrow = p, ncol = ncol(mat))
-  return(w_mat * pmax(alp_mat - thres_mat, 0))
-}
-# mat[1:p, ] * pmax(mat[(p+1):(2*p), ] - rep(a0_star(mat[2*p + 1, ],lam_s), each = p), 0)
-
-a0_star <- function(a0_raw,lam) {
-  # This calculates a_0* = Phi_inv( Phi(a0_raw)^(1/p) )
-  return(qnorm(pnorm(a0_raw)^(1/lam)))
-}
-
-T.n   = function(b) pmax(b, 0)
-beta  = function(b,lambda,p) b[1:p]*T.n(b[(p+1):(2*p)]-qnorm(pnorm(b[2*p+1])^(1/lambda)))
-
-
-# function to generate correlated covariates
-#'
-#' Generates an \eqn{n \times p} design matrix with AR(1) correlation
-#' structure among covariates.
-#'
-#' @param n Number of observations.
-#' @param p Number of covariates.
-#' @param rho AR(1) correlation parameter (must be in (-1, 1)).
-#'
-#' @return A numeric matrix of dimension \eqn{n \times p}.
-#' @export
-Gen_AR1 <- function(n,p,rho) {
-  if (abs(rho) >= 1) stop("rho must be in (-1, 1).")
-  Sigma  <- toeplitz(rho^(0:(p -1)))          # AR(1) covariance
-  mvnfast::rmvn(n, mu=rep(0,p), sigma=Sigma)
-}
-
 #' Simulate Target and Source Data for Transfer Learning
 #'
 #' Simulates one target dataset and multiple source datasets for
