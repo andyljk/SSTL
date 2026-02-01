@@ -9,35 +9,7 @@
 
   // --- Helper Functions (Same as before) ---
 
-  // --- Survival AFT Log-Likelihood ---
-  // z = (Y - X*beta) / sigma
-  // LL = sum_{obs} (z - log(sigma)) - sum_{all} exp(z)
-  double log_lik_aft(const vec& resid, const vec& C, double sd_y, int fam_code) {
-    vec z = resid / sd_y;
-    double ll = 0.0;
 
-    if (fam_code == 1) { // --- Weibull ---
-      double term1 = dot(C, z) - accu(C) * log(sd_y);
-      double term2 = sum(exp(z));
-      ll = term1 - term2;
-
-    } else if (fam_code == 2) { // --- Log-Logistic ---
-      vec log_denom = log(1.0 + exp(z));
-      ll = dot(C, z - log(sd_y)) - dot(1.0 + C, log_denom);
-
-    } else if (fam_code == 3) { // --- Log-Normal (Gaussian Errors) ---
-      int n = resid.n_elem;
-      for(int i=0; i<n; i++) {
-        if(C(i) == 1.0) {
-          ll += R::dnorm(z(i), 0.0, 1.0, 1) - log(sd_y);
-        } else {
-          ll += R::pnorm(-z(i), 0.0, 1.0, 1, 1);
-        }
-      }
-    }
-
-    return ll;
-  }
 
 
   // ============================================================================
@@ -64,7 +36,7 @@
 
     // Initialize Target Residuals
     vec resid_T = Y_T - X_T * beta_T;
-    double ll_T = log_lik_aft(resid_T, C_T, sd_y_T, fam_code);
+    double ll_T = ntl::log_lik_aft(resid_T, C_T, sd_y_T, fam_code);
 
     // Initialize Source Residuals (List of vectors)
     std::vector<vec> resid_S(S);
@@ -81,7 +53,7 @@
 
       // Residual = Y - X * (beta_T + bias)
       resid_S[s] = Y_s - X_s * (beta_T + bias_s);
-      ll_S_total += log_lik_aft(resid_S[s], C_s, sd_y_S(s), fam_code);
+      ll_S_total += ntl::log_lik_aft(resid_S[s], C_s, sd_y_S(s), fam_code);
     }
 
     double current_ll_global = ll_T + ll_S_total;
@@ -135,7 +107,7 @@
           vec d_sub = delta_beta.subvec(start, end);
           resid_T_prop -= X_T.cols(start, end) * d_sub;
         }
-        double ll_T_prop = log_lik_aft(resid_T_prop, C_T, sd_y_T, fam_code);
+        double ll_T_prop = ntl::log_lik_aft(resid_T_prop, C_T, sd_y_T, fam_code);
 
         // 2. Update Source Residuals
         double ll_S_prop_total = 0;
@@ -158,7 +130,7 @@
           }
 
           resid_S_prop[s] = r_s_curr;
-          ll_S_prop_total += log_lik_aft(r_s_curr, C_s, sd_y_S(s), fam_code);
+          ll_S_prop_total += ntl::log_lik_aft(r_s_curr, C_s, sd_y_S(s), fam_code);
         }
 
         double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -210,7 +182,7 @@
 
       // Residual = Y - X(beta_T + bias)
       resid_S[s] = Y - X * (beta_T + bias);
-      ll_S[s] = log_lik_aft(resid_S[s], C, sd_y_S(s), fam_code);
+      ll_S[s] = ntl::log_lik_aft(resid_S[s], C, sd_y_S(s), fam_code);
       current_ll_total += ll_S[s];
     }
 
@@ -307,7 +279,7 @@
             resid_S_prop[s] -= X.col(k) * d_val;
           }
 
-          prop_ll_total += log_lik_aft(resid_S_prop[s], C, sd_y_S(s), fam_code);
+          prop_ll_total += ntl::log_lik_aft(resid_S_prop[s], C, sd_y_S(s), fam_code);
         }
 
         if(prop_ll_total > log_y_threshold) {
@@ -330,13 +302,14 @@
 
 
   // Internal Helper for MH Step
-  double update_sigma_jeffreys_tl(const vec& resid, const vec& C, double current_sigma, double step_size, int fam_code) {
+  double update_sigma_jeffreys_tl(const arma::vec& resid, const arma::vec& C,
+                                  double current_sigma, double step_size, int fam_code) {
     double log_sigma_curr = log(current_sigma);
     double log_sigma_prop = R::rnorm(log_sigma_curr, step_size);
     double sigma_prop     = exp(log_sigma_prop);
 
-    double ll_curr = log_lik_aft(resid, C, current_sigma, fam_code);
-    double ll_prop = log_lik_aft(resid, C, sigma_prop, fam_code);
+    double ll_curr = ntl::log_lik_aft(resid, C, current_sigma, fam_code);
+    double ll_prop = ntl::log_lik_aft(resid, C, sigma_prop, fam_code);
 
     if (log(R::runif(0, 1)) < (ll_prop - ll_curr)) {
       return sigma_prop;

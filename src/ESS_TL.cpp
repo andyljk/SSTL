@@ -7,14 +7,6 @@
   using namespace Rcpp;
   using namespace arma;
 
-  // --- Helper Functions (Same as before) ---
-
-  double log_lik_resid(const vec& resid, double sd_y) {
-    double n = resid.n_elem;
-    double rss = sum(square(resid));
-    return -0.5 * n * log(2 * M_PI) - n * log(sd_y) - 0.5 * rss / (sd_y * sd_y);
-  }
-
   // ============================================================================
   // FUNCTION 1: Update Target Parameters (beta_T)
   // Impact: Changes Y_T likelihood AND ALL Y_S likelihoods
@@ -40,7 +32,7 @@
 
     // Initialize Target Residuals
     vec resid_T = Y_T - X_T * beta_T;
-    double ll_T = log_lik_resid(resid_T, sd_y_T);
+    double ll_T = ntl::log_lik_resid(resid_T, sd_y_T);
 
     // Initialize Source Residuals (List of vectors)
     std::vector<vec> resid_S(S);
@@ -59,7 +51,7 @@
 
       // Residual = Y - X * (beta_T + bias)
       resid_S[s] = Y_s - X_s * (beta_T + bias_s);
-      ll_S_total += log_lik_resid(resid_S[s], sd_y_S(s));
+      ll_S_total += ntl::log_lik_resid(resid_S[s], sd_y_S(s));
     }
 
     double current_ll_global = ll_T + ll_S_total;
@@ -114,7 +106,7 @@
           vec d_sub = delta_beta.subvec(start, end);
           resid_T_prop -= X_T.cols(start, end) * d_sub;
         }
-        double ll_T_prop = log_lik_resid(resid_T_prop, sd_y_T);
+        double ll_T_prop = ntl::log_lik_resid(resid_T_prop, sd_y_T);
 
         // 2. Update Source Residuals
         double ll_S_prop_total = 0;
@@ -136,7 +128,7 @@
           }
 
           resid_S_prop[s] = r_s_curr;
-          ll_S_prop_total += log_lik_resid(r_s_curr, sd_y_S(s));
+          ll_S_prop_total += ntl::log_lik_resid(r_s_curr, sd_y_S(s));
         }
 
         double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -191,7 +183,7 @@
 
       // Residual = Y - X(beta_T + bias)
       resid_S[s] = Y - X * (beta_T + bias);
-      ll_S[s] = log_lik_resid(resid_S[s], sd_y_S(s));
+      ll_S[s] = ntl::log_lik_resid(resid_S[s], sd_y_S(s));
       current_ll_total += ll_S[s];
     }
 
@@ -287,7 +279,7 @@
             resid_S_prop[s] -= X.col(k) * d_val;
           }
 
-          prop_ll_total += log_lik_resid(resid_S_prop[s], sd_y_S(s));
+          prop_ll_total += ntl::log_lik_resid(resid_S_prop[s], sd_y_S(s));
         }
 
         if(prop_ll_total > log_y_threshold) {

@@ -88,7 +88,7 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
     mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
 
     # update noise variance for target
-    beta_Tc = beta_Tc <- beta(bt.c, lambda_T, p)
+    beta_Tc = calc_beta(bt.c, lambda_T, p)
     sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
                       rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
     mc.sig2_T[i] = sig2_T
@@ -231,7 +231,7 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
     mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
 
     # update noise variance for target
-    beta_Tc = beta_Tc <- beta(bt.c, lambda_T, p)
+    beta_Tc = calc_beta(bt.c, lambda_T, p)
     sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
                       rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
     mc.sig2_T[i] = sig2_T

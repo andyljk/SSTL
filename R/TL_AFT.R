@@ -97,7 +97,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     # STEP B: Update Sources (Run ONLY if S > 0)
     # ---------------------------------------------------------
     if (S > 0){
-      beta_Tc = beta(bt.c, lambda_T, p)
+      beta_Tc = calc_beta(bt.c, lambda_T, p)
       chol_W <- t(chol(cov_W))
 
       cpp_res_S <- update_source_joint_aft(bs_c = bs.c,
@@ -118,7 +118,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
       mc.W[,,i] = cov_W
 
       # update scale parameter for sources
-      beta_Tc_curr <- beta(bt.c, lambda_T, p)
+      beta_Tc_curr <- calc_beta(bt.c, lambda_T, p)
       for (s in 1:S){
         bs_col <- bs.c[, s] # Extract column for source s
         sig_s[s] <- update_sigma_source_tl_cpp(bs_col, beta_Tc_curr,
@@ -234,7 +234,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
 
 
     # update source biases
-    beta_Tc = beta(bt.c, lambda_T, p)
+    beta_Tc = calc_beta(bt.c, lambda_T, p)
     chol_W <- t(chol(cov_W))
 
     cpp_res_S <- update_source_joint_aft(bs_c = bs.c,
@@ -254,7 +254,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     mc.W[,,i] = cov_W
 
     # update scale parameter for sources
-    beta_Tc_curr <- beta(bt.c, lambda_T, p)
+    beta_Tc_curr <- calc_beta(bt.c, lambda_T, p)
     for (s in 1:S){
       bs_col <- bs.c[, s] # Extract column for source s
       sig_s[s] <- update_sigma_source_tl_cpp(bs_col, beta_Tc_curr,

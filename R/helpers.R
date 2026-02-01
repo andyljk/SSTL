@@ -9,7 +9,7 @@ a0_star <- function(a0_raw, lam) stats::qnorm(pnorm(a0_raw)^(1/lam))
 
 #' @keywords internal
 #' @noRd
-beta = function(b, lambda, p) {
+calc_beta = function(b, lambda, p) {
   w = b[1:p]; a = b[(p+1):(2*p)]; a0 = b[2*p+1]
   return(w * T.n(a - a0_star(a0, lambda)))
 }
