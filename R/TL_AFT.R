@@ -131,7 +131,12 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc.bt=mc.bt, mc.bs=mc.bs, n.t=N.t, n.s=N.s,
+
+  MC.beta  = t(apply(mc.bt, 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
+  MC.alp = t(apply(mc.bt, 1, function(b) T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
+
+  return(list(MC_beta = MC.beta, MC_alpha = MC.alp,
+              mc.bt=mc.bt, mc.bs=mc.bs, n.t=N.t, n.s=N.s,
               mc.sig_T = mc.sig_T, mc.sig_s = mc.sig_s,
               mc.tau2_wT = mc.tau2_wT, mc.covW = mc.W,
               lambda=c(lambda_T,lambda_s))
