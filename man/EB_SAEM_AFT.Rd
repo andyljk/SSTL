@@ -10,15 +10,17 @@ EB_SAEM_AFT(
   C,
   b.c = NULL,
   sd.0 = NULL,
+  lambda = NULL,
   N = 5000,
   S.max = 100,
-  block_size = 3,
+  block_size = 1,
   lambda_init = 9,
   gamma_power = 0.9,
   lr = 0.1,
   K_block = 10,
   schedule = 0.5,
   family = "Weibull",
+  slab = "exp",
   verbose = 1
 )
 }
@@ -32,6 +34,8 @@ EB_SAEM_AFT(
 \item{b.c}{Initial states for latent parameters.}
 
 \item{sd.0}{Prior SD vector for target latent parameters.}
+
+\item{lambda}{Threshold parameter.}
 
 \item{N}{Number of MCMC iterations.}
 
@@ -48,6 +52,8 @@ EB_SAEM_AFT(
 \item{schedule}{Exponent controlling learning-rate decay (e.g., lr / t^schedule).}
 
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
+
+\item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
 
 \item{verbose}{Verbosity flag.}
 }

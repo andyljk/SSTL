@@ -13,14 +13,15 @@ ESS_Gibbs_TL_AFT(
   C_s = NULL,
   bt.c = NULL,
   bs.c = NULL,
-  sd_T = NULL,
-  cov_W = NULL,
   lambda_T = NULL,
   lambda_s = NULL,
+  xi = NULL,
+  xi_s = NULL,
   N = 5000,
   S.max = 500,
   block_size = 1,
   family = "Weibull",
+  slab = "poly",
   verbose = 1
 )
 }
@@ -39,11 +40,9 @@ ESS_Gibbs_TL_AFT(
 
 \item{bt.c, bs.c}{Initial states for target and source parameters.}
 
-\item{sd_T}{Prior SD vector for target latent parameters.}
-
-\item{cov_W}{Prior covariance for source weight correlation.}
-
 \item{lambda_T, lambda_s}{Threshold parameters.}
+
+\item{xi, xi_s}{Initial states of shadow variables for the slab scale parameter.}
 
 \item{N}{Number of MCMC iterations.}
 
@@ -52,6 +51,8 @@ ESS_Gibbs_TL_AFT(
 \item{block_size}{Block size for updates.}
 
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
+
+\item{slab}{Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.}
 
 \item{verbose}{Verbosity flag.}
 }

@@ -1,27 +1,58 @@
 #' Internal helper: positive-part operator
-#' @keywords internal
-#' @noRd
-T.n <- function(b) pmax(b, 0)
 
 #' @keywords internal
 #' @noRd
-a0_star <- function(a0_raw, lam) stats::qnorm(pnorm(a0_raw)^(1/lam))
-
-#' @keywords internal
-#' @noRd
-calc_beta = function(b, lambda, p) {
-  w = b[1:p]; a = b[(p+1):(2*p)]; a0 = b[2*p+1]
-  return(w * T.n(a - a0_star(a0, lambda)))
+calc_bias <- function(mat,p,lam_s,tau_S,slab_code){
+  S = ncol(mat)
+  bias_mat <- sapply(1:S, function(s) {
+    calc_beta(mat[, s], lam_s[s], tau_S[s], p, slab_code)
+  })
+  return(bias_mat)
 }
 
 #' @keywords internal
 #' @noRd
-calc_bias <- function(mat,p,lam_s){
-  w_mat = mat[1:p, , drop=FALSE]
-  alp_mat = mat[(p+1):(2*p), , drop=FALSE]
-  thres_vec = rep(a0_star(mat[2*p + 1, ], lam_s), each = p)
-  thres_mat = matrix(thres_vec, nrow = p, ncol = ncol(mat))
-  return(w_mat * pmax(alp_mat - thres_mat, 0))
+a0_star <- function(a0_raw,lam) {
+  # This calculates a_0* = Phi_inv( Phi(a0_raw)^(1/p) )
+  return(qnorm(pnorm(a0_raw)^(1/lam)))
+}
+
+#' @keywords internal
+#' @noRd
+T_n1 = function(b) as.numeric(b > 0)
+#' @keywords internal
+#' @noRd
+H_n1 = function(w, phi=2, d=2) phi * sign(w) * (exp(d*w^2)-1)^(0.5/d) # tau * sign(w) * sqrt(abs(w)) * exp(0.5 * w^2)
+
+#' @keywords internal
+#' @noRd
+T_n2 = function(b) as.numeric(b > 0)
+#' @keywords internal
+#' @noRd
+H_n2 = function(w, phi=2) phi * sign(w) * sqrt(abs(w)) * exp(0.5 * w^2)
+
+#' @keywords internal
+#' @noRd
+T_c = function(b) pmax(b,0)
+#' @keywords internal
+#' @noRd
+H_c = function(w) sign(w)*exp(0.5*w^2)
+
+#' @keywords internal
+#' @noRd
+T_l = function(b) pmax(b,0)
+#' @keywords internal
+#' @noRd
+H_l = function(w) w
+
+#' @keywords internal
+#' @noRd
+calc_beta  = function(b,lambda,tau,p,slab_code){
+  if (slab_code == 1){T_u = T_l; H_u = H_l}
+  else if (slab_code == 2){T_u = T_c; H_u = H_c}
+  else if (slab_code == 3){T_u = T_n1; H_u = H_n1}
+  else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
+  tau*H_u(b[1:p])*T_u(b[(p+1):(2*p)]-qnorm(pnorm(b[2*p+1])^(1/lambda)))
 }
 
 # function to generate correlated covariates

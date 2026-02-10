@@ -11,13 +11,14 @@ ESS_Gibbs_TL(
   Y_s,
   bt.c = NULL,
   bs.c = NULL,
-  sd_T = NULL,
-  cov_W = NULL,
   lambda_T = NULL,
   lambda_s = NULL,
+  xi = NULL,
+  xi_s = NULL,
   N = 5000,
   S.max = 500,
-  block_size = 3,
+  block_size = 1,
+  slab = "exp",
   verbose = 1
 )
 }
@@ -32,10 +33,6 @@ ESS_Gibbs_TL(
 
 \item{bt.c, bs.c}{Initial states for target and source parameters.}
 
-\item{sd_T}{Prior SD vector for target latent parameters.}
-
-\item{cov_W}{Prior covariance for source weight correlation.}
-
 \item{lambda_T, lambda_s}{Threshold parameters.}
 
 \item{N}{Number of MCMC iterations.}
@@ -44,7 +41,13 @@ ESS_Gibbs_TL(
 
 \item{block_size}{Block size for updates.}
 
+\item{slab}{Type of slab distribution to use, includes 'exp', 'poly', 'nlp'. Default is 'exp'.}
+
 \item{verbose}{Verbosity flag.}
+
+\item{sd_T}{Prior SD vector for target latent parameters.}
+
+\item{cov_W}{Prior covariance for source weight correlation.}
 }
 \value{
 A list containing MCMC draws and diagnostics.

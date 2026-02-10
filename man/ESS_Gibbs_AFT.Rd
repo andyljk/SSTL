@@ -15,6 +15,7 @@ ESS_Gibbs_AFT(
   S.max = 100,
   block_size = 1,
   family = "Weibull",
+  slab = "exp",
   verbose = 1
 )
 }
@@ -38,6 +39,8 @@ ESS_Gibbs_AFT(
 \item{block_size}{Block size for updates.}
 
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
+
+\item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
 
 \item{verbose}{Verbosity flag.}
 }

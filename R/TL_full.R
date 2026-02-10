@@ -1,4 +1,3 @@
-
 #' ESS-within-Gibbs sampler for Bayesian transfer learning of HD linear regression models.
 #'
 #' Runs elliptical slice sampling updates for target parameters and source biases.
@@ -14,15 +13,21 @@
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
+#' @param slab Type of slab distribution to use, includes 'exp', 'poly', 'nlp'. Default is 'exp'.
 #' @param verbose Verbosity flag.
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
 ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                          bt.c=NULL, bs.c=NULL,
-                         sd_T=NULL, cov_W=NULL,
                          lambda_T=NULL, lambda_s=NULL,
-                         N=5000, S.max=500, block_size=3,
+                         xi=NULL, xi_s=NULL,
+                         N=5000, S.max=500, block_size=1, slab = "exp",
                          verbose=1) {
+
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_code <- slab_map[tolower(slab)]
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+
   # b_T, b_s:     Current state (vector) for par of interest and source study biases
   # LL:  Function to compute log-likelihood
   # sd_0:    sd vector of the Gaussian prior
@@ -42,17 +47,12 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
   })
   id <- c(id, list(2*p + 1))
 
-  if (is.null(sd_T)) sd_T = sqrt(c(rep(0.15, p), rep(1,p), 1))
+  sd_T = sqrt(c(rep(1, p), rep(1,p), 1))
 
   if (is.null(bt.c)){
     bt.c = c(rnorm(2*p+1, 0, sd_T)) # current state for target par: [w_T,a_T,a_0]
     bs.c = matrix(rnorm((2*p+1)*S, 0, c(rep(0.05,p),rep(1,p+1))), nrow=2*p+1, ncol=S) # [[w_1^T,a_1^T,a_10^T]^T,..,[w_S^T,a_S^T,a_S0^T]^T]
   }
-
-  # same prior variances for latent variables in all data sources
-  if (is.null(cov_W)) cov_W = diag(0.05^2, S)
-
-  W_0 = diag(0.05^2, S); v_0 = S+1
 
   if(is.null(lambda_T) | is.null(lambda_s)){
     lambda_T = p^0.5; lambda_s = rep(3,S)
@@ -64,10 +64,11 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
   N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
   N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
   mc.bt <- matrix(NA, N, d)              # storage for the target parameter
+  MC.beta = MC.alpha = matrix(NA, N, p)
   mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
-  mc.W = array(NA, dim=c(S,S,N))         # storage for covariances
   mc.sig2_T = rep(NA,N); mc.sig2_s = array(NA, dim=c(S,N))
-  mc.tau2_wT = rep(NA,N)
+  mc.tau_T = rep(NA,N); if (is.null(xi)) xi = 1
+  mc.tau_S = array(NA,dim=c(N,S)); if (is.null(xi_s)) xi_s = rep(0.1,S)
 
   sig2_T = 1; sig2_s = rep(1,S) # initialize noise variance parameters
 
@@ -80,46 +81,73 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                                    bs_c = bs.c,
                                    id = id, sd_T = sd_T,
                                    lambda_T = lambda_T, lambda_S = lambda_s,
+                                   tau = abs(xi), tau_S = abs(xi_s),
                                    sd_y_T = sqrt(sig2_T), sd_y_S = sqrt(sig2_s),
-                                   S_max = S.max)
+                                   S_max = S.max, slab_code = slab_code)
     bt.c <- cpp_res_T$bt_c
     N.t[i,] = cpp_res_T$N_t
 
     mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
 
     # update noise variance for target
-    beta_Tc = calc_beta(bt.c, lambda_T, p)
+    beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
+    MC.beta[i,] = beta_Tc
     sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
                       rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
     mc.sig2_T[i] = sig2_T
 
-    # update prior variance of w in target
-    tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
-    sd_T[1:p] = tau2_w^0.5; mc.tau2_wT[i] = tau2_w
+    # Update Target Scale
+    xi <- update_target_scale_cpp(xi_t_curr = xi,
+                                  sd_0 = 10.0,
+                                  bt_c = bt.c,
+                                  bs_c = bs.c,
+                                  X_T = X_T, Y_T = Y_T,
+                                  X_s_list = X_s, Y_s_list = Y_s,
+                                  lambda_T = lambda_T,
+                                  lambda_S = lambda_s,
+                                  sd_y_T = sqrt(sig2_T), sd_y_S = sqrt(sig2_s),
+                                  tau_S = abs(xi_s),
+                                  slab_code = slab_code)
+    tau <- abs(xi)
+    mc.tau_T[i] <- tau
 
-    # update source biases
-    # Pre-calculate Cholesky for C++ (Lower Triangular)
-    chol_W <- t(chol(cov_W))
+    # update prior variance of w in target
+    # tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
+    # sd_T[1:p] = tau2_w^0.5; mc.tau2_wT[i] = tau2_w
+
 
     # Calls optimized C++ function (Joint Row-wise updates)
     cpp_res_S <- update_source_joint_cpp(bs_c = bs.c,
                                          X_s_list = X_s, Y_s_list = Y_s,
                                          beta_T = beta_Tc,
-                                         chol_cov_W = chol_W,
                                          lambda_S = lambda_s,
+                                         tau_S = abs(xi_s),
                                          sd_y_S = sqrt(sig2_s),
-                                         S_max = S.max)
+                                         S_max = S.max,
+                                         slab_code = slab_code)
     bs.c <- cpp_res_S$bs_c
     mc.bs[,,i]    <- bs.c                  # Store the sample for source bias
     N.s[i,] = cpp_res_S$N_s
 
+    # Update Source Scales (Jointly with Independent Prior)
+    xi_s <- update_source_scales_cpp(xi_s_curr = xi_s,
+                                     sd_0 = 10.0,
+                                     bs_c = bs.c,
+                                     X_s_list = X_s, Y_s_list = Y_s,
+                                     beta_T = beta_Tc,
+                                     lambda_S = lambda_s,
+                                     sd_y_S = sqrt(sig2_s),
+                                     slab_code = slab_code)
+    tau_s <- abs(xi_s)
+    mc.tau_S[i, ] <- tau_s
+
     # draw conditional covariances for w's in source
-    term_b = matrix(bs.c[1:p,], nrow=p)                            # handle edge case when S=1
-    cov_W <- MCMCpack::riwish(v_0 + p, t(term_b) %*% term_b + W_0)
-    mc.W[,,i] = cov_W
+    # term_b = matrix(bs.c[1:p,], nrow=p)                            # handle edge case when S=1
+    # cov_W <- riwish(v_0 + p, t(term_b) %*% term_b + W_0)
+    # mc.W[,,i] = cov_W
 
     # update noise variance for sources
-    biases <- calc_bias(bs.c,p,lambda_s)
+    biases <- calc_bias(bs.c,p,lambda_s,tau_s,slab_code)
     for (s in 1:S){
       beta_sc = biases[,s] + beta_Tc
       sig2_s[s] = 1/rgamma(1, shape = 0.01 + length(Y_s[[s]])/2,
@@ -129,21 +157,14 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-
-  # calculate beta
-  MC.beta  = t(apply(mc.bt, 1, function(b) b[1:p] * T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
-  MC.alp = t(apply(mc.bt, 1, function(b) T.n(b[(p+1):(2*p)] - a0_star(b[2*p+1], lambda_T) )  ))
-
-  return(list(MC_beta = MC.beta,
-              MC_alpha = MC.alp,
-              mc.bt=mc.bt,
-              mc.bs=mc.bs,
+  return(list(mc.bt=mc.bt, mc.bs=mc.bs,
+              MC_beta = MC.beta,
               n.t=N.t, n.s=N.s,
               mc.s2_T = mc.sig2_T, mc.s2_s = mc.sig2_s,
-              mc.tau2_wT = mc.tau2_wT, mc.covW = mc.W,
-              lambda=c(lambda_T,lambda_s))
+              mc.tau_T = mc.tau_T, mc.tau_S = mc.tau_S)
   )
 }
+
 
 #' Empirical Bayes estimation of prior spike probabilities of the SpSL model
 #'
@@ -158,13 +179,18 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
 #' @export
 EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
                          bt.c=NULL, bs.c=NULL,
-                         sd_T=NULL, cov_W=NULL,
-                         N=5000, S.max=500, block_size=3,
+                         xi=NULL, xi_s=NULL,
+                         N=5000, S.max=500, block_size=1,
                          gamma_power = 0.9,
                          lr = 0.1,
                          K_block = 10,
-                         schedule=0.5,
+                         schedule=0.5, slab = "exp",
                          verbose=1){
+
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_code <- slab_map[tolower(slab)]
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+
   # b_T, b_s:     Current state (vector) for par of interest and source study biases
   # LL:  Function to compute log-likelihood
   # sd_0:    sd vector of the Gaussian prior
@@ -184,28 +210,19 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
   })
   id <- c(id, list(2*p + 1))
 
-  if (is.null(sd_T)) sd_T = sqrt(c(rep(0.15, p), rep(1,p), 1))
-
+  sd_T = sqrt(c(rep(1, p), rep(1,p), 1))
   if (is.null(bt.c)){
     bt.c = c(rnorm(2*p+1, 0, sd_T)) # current state for target par: [w_T,a_T,a_0]
     bs.c = matrix(rnorm((2*p+1)*S, 0, c(rep(0.05,p),rep(1,p+1))), nrow=2*p+1, ncol=S) # [[w_1^T,a_1^T,a_10^T]^T,..,[w_S^T,a_S^T,a_S0^T]^T]
   }
-
-  # same prior variances for latent variables in all data sources
-  if (is.null(cov_W)) cov_W = diag(0.05^2, S)
-
-  W_0 = diag(0.05^2, S); v_0 = S+1
+  if (is.null(xi)) xi = 1; if (is.null(xi_s)) xi_s = rep(0.1,S)
 
   d    <- length(bt.c)                   # nr of parameters
   K    <- length(id)                     # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
-  v    <- sapply(id, length)             # length of each block b.j
-  N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
-  N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
   mc.bt <- matrix(NA, N, d)              # storage for the target parameter
   mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
-  mc.W = array(NA, dim=c(S,S,N))         # storage for covariances
-  mc.sig2_T = rep(NA,N); mc.sig2_s = array(NA, dim=c(S,N))
-  mc.tau2_wT = rep(NA,N)
+  if (is.null(xi)) xi = 1
+  if (is.null(xi_s)) xi_s = rep(0.1,S)
   mc.lam = array(NA, dim=c(N/K_block,S+1))
 
   sig2_T = 1; sig2_s = rep(1,S) # initialize noise variance parameters
@@ -224,49 +241,61 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
                                    bs_c = bs.c,
                                    id = id, sd_T = sd_T,
                                    lambda_T = lambda_T, lambda_S = lambda_s,
+                                   tau = abs(xi), tau_S = abs(xi_s),
                                    sd_y_T = sqrt(sig2_T), sd_y_S = sqrt(sig2_s),
-                                   S_max = S.max)
+                                   S_max = S.max, slab_code = slab_code)
     bt.c <- cpp_res_T$bt_c
 
     mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
 
     # update noise variance for target
-    beta_Tc = calc_beta(bt.c, lambda_T, p)
+    beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
     sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
                       rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
-    mc.sig2_T[i] = sig2_T
 
-    # update prior variance of w in target
-    tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
-    sd_T[1:p] = tau2_w^0.5; mc.tau2_wT[i] = tau2_w
-
-    # update source biases
-    # Pre-calculate Cholesky for C++ (Lower Triangular)
-    chol_W <- t(chol(cov_W))
+    # Update Target Scale
+    xi <- update_target_scale_cpp(xi_t_curr = xi,
+                                  sd_0 = 2.0,
+                                  bt_c = bt.c,
+                                  bs_c = bs.c,
+                                  X_T = X_T, Y_T = Y_T,
+                                  X_s_list = X_s, Y_s_list = Y_s,
+                                  lambda_T = lambda_T,
+                                  lambda_S = lambda_s,
+                                  sd_y_T = sqrt(sig2_T), sd_y_S = sqrt(sig2_s),
+                                  tau_S = abs(xi_s),
+                                  slab_code = slab_code)
+    tau <- abs(xi)
 
     # Calls optimized C++ function (Joint Row-wise updates)
     cpp_res_S <- update_source_joint_cpp(bs_c = bs.c,
                                          X_s_list = X_s, Y_s_list = Y_s,
                                          beta_T = beta_Tc,
-                                         chol_cov_W = chol_W,
                                          lambda_S = lambda_s,
+                                         tau_S = abs(xi_s),
                                          sd_y_S = sqrt(sig2_s),
-                                         S_max = S.max)
+                                         S_max = S.max,
+                                         slab_code = slab_code)
     bs.c <- cpp_res_S$bs_c
     mc.bs[,,i]    <- bs.c                  # Store the sample for source bias
 
-    # draw conditional covariances for w's in source
-    term_b = matrix(bs.c[1:p,], nrow=p)                            # handle edge case when S=1
-    cov_W <- MCMCpack::riwish(v_0 + p, t(term_b) %*% term_b + W_0)
-    mc.W[,,i] = cov_W
+    # Update Source Scales (Jointly with Independent Prior)
+    xi_s <- update_source_scales_cpp(xi_s_curr = xi_s,
+                                     sd_0 = 2.0,
+                                     bs_c = bs.c,
+                                     X_s_list = X_s, Y_s_list = Y_s,
+                                     beta_T = beta_Tc,
+                                     lambda_S = lambda_s,
+                                     sd_y_S = sqrt(sig2_s),
+                                     slab_code = slab_code)
+    tau_s <- abs(xi_s)
 
     # update noise variance for sources
-    biases <- calc_bias(bs.c,p,lambda_s)
+    biases <- calc_bias(bs.c,p,lambda_s,tau_s,slab_code)
     for (s in 1:S){
       beta_sc = biases[,s] + beta_Tc
       sig2_s[s] = 1/rgamma(1, shape = 0.01 + length(Y_s[[s]])/2,
                            rate = 0.01 + 0.5*sum((Y_s[[s]]-X_s[[s]]%*%beta_sc)^2))
-      mc.sig2_s[s,i] = sig2_s[s]
     }
 
     if (i%%K_block==0){
@@ -295,62 +324,5 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
     }
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc.bt=mc.bt, mc.bs=mc.bs, n.t=N.t, n.s=N.s,
-              mc.s2_T = mc.sig2_T, mc.s2_s = mc.sig2_s,
-              mc.tau2_wT = mc.tau2_wT, mc.covW = mc.W,
-              mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s)))
+  return(list(mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s)))
 }
-
-
-#' Simulate Target and Source Data for Transfer Learning
-#'
-#' Simulates one target dataset and multiple source datasets for
-#' high-dimensional regression transfer learning experiments.
-#'
-#' @param p Number of covariates.
-#' @param n_t Target sample size.
-#' @param n_s Source sample size (per source).
-#' @param S Number of source studies.
-#' @param sparse_level Proportion of non-zero coefficients in the target.
-#' @param effect_size Signal strength of non-zero coefficients.
-#' @param bias_level Magnitude of source-specific bias.
-#'
-#' @return A list with elements:
-#' \itemize{
-#'   \item X_T: Target design matrix
-#'   \item Y_T: Target response vector
-#'   \item X_s: List of source design matrices
-#'   \item Y_s: List of source response vectors
-#'   \item b_T: True target coefficient vector
-#'   \item b_s: True source coefficient matrix
-#' }
-#' @export
-sim_data = function(p, n_t, n_s, S, info_set = round(S/2),
-                    sparse_level=0.1, effect_size=0.5, X_cor=0.5,
-                    prop_bias=0.2,bias_level=5, bad_bias = 5){
-  p_0   = round(p*sparse_level) # non-zero true coefficients
-  sd_y = 1
-  good = c(1:info_set)
-  b_T    = c(rep(effect_size,p_0), rep(0, p-p_0)) # true parameter, first 5 nonzero, the rest 100 are zero
-  X_T    = Gen_AR1(n_t,p,rho=X_cor) # AR1 correlated covars
-  Y_T    = X_T%*%b_T + rnorm(n_t,0,sd_y) # true response data
-
-  b_s = array(NA,dim=c(p,S))
-  X_s = vector(mode="list",length=S)
-  Y_s = vector(mode="list",length=S)
-
-  # generate source data
-  for (s in 1:S){
-    b_s[,s] = b_T + bad_bias
-    if (s %in% good) b_s[,s] = b_T + rbinom(p,1,prop_bias)*(2*rbinom(p,1,0.5)-1)*bias_level/p
-    X_s[[s]] = Gen_AR1(n_s,p,rho=X_cor) # AR1
-    Y_s[[s]] = X_s[[s]] %*% b_s[,s] + rnorm(n_s,0,1)
-  }
-  return(list(X_T=X_T,
-              Y_T=Y_T,
-              X_s=X_s,
-              Y_s=Y_s,
-              b_T=b_T,
-              b_s=b_s))
-}
-

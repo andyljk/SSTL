@@ -2,27 +2,30 @@
 % Please edit documentation in R/TL_AFT.R
 \name{EB_SAEM_TL_AFT}
 \alias{EB_SAEM_TL_AFT}
-\title{Empirical Bayes estimation of prior spike probabilities of the SpSL model}
+\title{stochastic version}
 \usage{
 EB_SAEM_TL_AFT(
   X_T,
   Y_T,
   C_T = NULL,
-  X_s = NULL,
-  Y_s = NULL,
+  X_s,
+  Y_s,
   C_s = NULL,
   bt.c = NULL,
   bs.c = NULL,
-  sd_T = NULL,
-  cov_W = NULL,
+  lambda_T = NULL,
+  lambda_s = NULL,
+  xi = NULL,
+  xi_s = NULL,
   N = 5000,
   S.max = 500,
   block_size = 1,
+  family = "Weibull",
+  slab = "poly",
   gamma_power = 0.9,
   lr = 0.1,
   K_block = 10,
   schedule = 0.5,
-  family = "Weibull",
   verbose = 1
 )
 }
@@ -41,15 +44,19 @@ EB_SAEM_TL_AFT(
 
 \item{bt.c, bs.c}{Initial states for target and source parameters.}
 
-\item{sd_T}{Prior SD vector for target latent parameters.}
+\item{lambda_T, lambda_s}{Threshold parameters.}
 
-\item{cov_W}{Prior covariance for source weight correlation.}
+\item{xi, xi_s}{Initial states of shadow variables for the slab scale parameter.}
 
 \item{N}{Number of MCMC iterations.}
 
 \item{S.max}{Maximum slice iterations per update.}
 
 \item{block_size}{Block size for updates.}
+
+\item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
+
+\item{slab}{Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.}
 
 \item{gamma_power}{Robbins–Monro step-size exponent for SAEM updates.}
 
@@ -59,13 +66,11 @@ EB_SAEM_TL_AFT(
 
 \item{schedule}{Exponent controlling learning-rate decay (e.g., lr / t^schedule).}
 
-\item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
-
 \item{verbose}{Verbosity flag.}
 }
 \value{
 A list containing MCMC draws and lambda trajectories.
 }
 \description{
-Run a stochastic EM algorithm
+stochastic version
 }
