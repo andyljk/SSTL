@@ -68,10 +68,11 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     mc.bt <- matrix(NA, N, d)              # storage for the target parameter
     mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
     mc.sig_T = rep(NA,N); mc.sig_s = array(NA, dim=c(S,N))
-    mc.tau_T = rep(NA,N); if (is.null(xi)) xi = 1
-    mc.tau_S = array(NA,dim=c(N,S)); if (is.null(xi_s)) xi_s = rep(0.1,S)
+    mc.tau_T = rep(NA,N)
+    mc.tau_S = array(NA,dim=c(N,S))
   }
-
+  if (is.null(xi)) xi = 1
+  if (is.null(xi_s)) xi_s = rep(0.1,S)
   if (is.null(sig_T)) sig_T = 1
   if (is.null(sig_s)) sig_s = rep(1,S) # initialize scale parameters
 
