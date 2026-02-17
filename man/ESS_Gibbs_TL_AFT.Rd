@@ -17,12 +17,15 @@ ESS_Gibbs_TL_AFT(
   lambda_s = NULL,
   xi = NULL,
   xi_s = NULL,
+  sig_T = NULL,
+  sig_s = NULL,
   N = 5000,
   S.max = 500,
   block_size = 1,
   family = "Weibull",
   slab = "poly",
-  verbose = 1
+  verbose = 1,
+  debug = F
 )
 }
 \arguments{
@@ -55,6 +58,8 @@ ESS_Gibbs_TL_AFT(
 \item{slab}{Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.}
 
 \item{verbose}{Verbosity flag.}
+
+\item{debug}{Optional returning of MCMC runs other than the coefficient itself}
 }
 \value{
 A list containing MCMC draws and diagnostics.

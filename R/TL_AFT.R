@@ -17,6 +17,7 @@
 #' @param family Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.
 #' @param slab Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.
 #' @param verbose Verbosity flag.
+#' @param debug Optional returning of MCMC runs other than the coefficient itself
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
 # elliptical slice sampling within gibbs function
@@ -25,9 +26,10 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                              bt.c=NULL, bs.c=NULL,
                              lambda_T=NULL, lambda_s=NULL,
                              xi=NULL, xi_s=NULL,
+                             sig_T = NULL, sig_s = NULL,
                              N=5000, S.max=500, block_size=1,
                              family="Weibull", slab = "poly",
-                             verbose=1) {
+                             verbose=1, debug=F) {
 
   fam_map <- c("weibull" = 1, "loglogistic" = 2, "lognormal" = 3)
   fam_code <- fam_map[tolower(family)]
@@ -59,16 +61,19 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 
   d    <- length(bt.c)                   # nr of parameters
   K    <- length(id)                     # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
-  N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
-  N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
-  mc.bt <- matrix(NA, N, d)              # storage for the target parameter
-  MC.beta = MC.alpha = matrix(NA, N, p)
-  mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
-  mc.sig_T = rep(NA,N); mc.sig_s = array(NA, dim=c(S,N))
-  mc.tau_T = rep(NA,N); if (is.null(xi)) xi = 1
-  mc.tau_S = array(NA,dim=c(N,S)); if (is.null(xi_s)) xi_s = rep(0.1,S)
+  MC.beta = matrix(NA, N, p)
+  if (debug){
+    N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
+    N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
+    mc.bt <- matrix(NA, N, d)              # storage for the target parameter
+    mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
+    mc.sig_T = rep(NA,N); mc.sig_s = array(NA, dim=c(S,N))
+    mc.tau_T = rep(NA,N); if (is.null(xi)) xi = 1
+    mc.tau_S = array(NA,dim=c(N,S)); if (is.null(xi_s)) xi_s = rep(0.1,S)
+  }
 
-  sig_T = 1; sig_s = rep(1,S) # initialize scale parameters
+  if (is.null(sig_T)) sig_T = 1
+  if (is.null(sig_s)) sig_s = rep(1,S) # initialize scale parameters
 
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
@@ -87,8 +92,6 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                    sd_y_T = sig_T, sd_y_S = sig_s,
                                    S_max = S.max, fam_code=fam_code, slab_code=slab_code)
     bt.c <- cpp_res_T$bt_c
-    mc.bt[i, ] <- bt.c
-    N.t[i,] = cpp_res_T$N_t
 
     # Update Target Scale
     xi <- update_target_scale_aft(xi_t_curr = xi,
@@ -102,7 +105,6 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                   tau_S = abs(xi_s),
                                   fam_code=fam_code, slab_code = slab_code)
     tau <- abs(xi)
-    mc.tau_T[i] <- tau
 
     # update prior variance of w in target
     # tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
@@ -112,7 +114,14 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     sig_T = update_sigma_target_tl_aft(bt.c, X_T, Y_T, C_T,
                                        sig_T, lambda_T, abs(xi),
                                        fam_code=fam_code, slab_code=slab_code, step_size=0.1)
-    mc.sig_T[i] = sig_T
+
+    if (debug){
+      mc.bt[i, ] <- bt.c
+      N.t[i,] = cpp_res_T$N_t
+      mc.tau_T[i] <- tau
+      mc.sig_T[i] = sig_T
+    }
+
 
 
     # ---------------------------------------------------------
@@ -129,8 +138,6 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                            S_max = S.max,
                                            fam_code=fam_code, slab_code=slab_code)
       bs.c <- cpp_res_S$bs_c
-      mc.bs[,,i] <- bs.c
-      N.s[i,] = cpp_res_S$N_s
 
       # Update Source Scales (Jointly with Independent Prior)
       xi_s <- update_source_scales_aft(xi_s_curr = xi_s,
@@ -142,7 +149,6 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                        sd_y_S = sig_s,
                                        fam_code = fam_code, slab_code = slab_code)
       tau_s <- abs(xi_s)
-      mc.tau_S[i, ] <- tau_s
 
       # update scale parameter for sources
       beta_Tc_curr <- calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
@@ -153,17 +159,27 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                                sig_s[s], lambda_s[s], abs(xi_s[s]),
                                                fam_code=fam_code, slab_code=slab_code,
                                                step_size=0.1)
-        mc.sig_s[s, i] <- sig_s[s]
+        if (debug) mc.sig_s[s, i] <- sig_s[s]
       }
+
+      if (debug){
+        mc.bs[,,i] <- bs.c
+        N.s[i,] = cpp_res_S$N_s
+        mc.tau_S[i, ] <- tau_s
+      }
+
       MC.beta[i,] = beta_Tc_curr
     }
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc_bt=mc.bt, mc_bs=mc.bs, MC_beta = MC.beta, n_t=N.t, n_s=N.s,
-              mc_sig_T = mc.sig_T, mc_sig_s = mc.sig_s,
-              mc_tau_T = mc.tau_T, mc_tau_S = mc.tau_S)
-  )
+  if (debug){
+    return(list(mc_bt=mc.bt, mc_bs=mc.bs, MC_beta = MC.beta, n_t=N.t, n_s=N.s,
+                mc_sig_T = mc.sig_T, mc_sig_s = mc.sig_s,
+                mc_tau_T = mc.tau_T, mc_tau_S = mc.tau_S))
+  }else{
+    return(list(MC_beta = MC.beta))
+  }
 }
 
 #' stochastic version
@@ -318,7 +334,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
       lr_t = lr / (t_block^schedule)
       gamma_t <- t_block^(-gamma_power)     # Robbins step size
       zT_block       <- mc.bt[(i-K_block+1):i, 2*p+1]
-      mean_logPhi_T  <- mean(log(pnorm(zT_block)))
+      mean_logPhi_T  <- mean(pnorm(zT_block,log=T))
       B_hat_T        <- (1 - gamma_t) * B_hat_T + gamma_t * mean_logPhi_T
       B_hat_T        <- max(min(B_hat_T, -0.3), -3)  # clip
 
@@ -327,7 +343,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
 
       for (s in 1:S) {
         zS_block          <- mc.bs[2*p+1, s, (i-K_block+1):i]
-        mean_logPhi_s     <- mean(log(pnorm(zS_block)))
+        mean_logPhi_s     <- mean(pnorm(zS_block,log=T))
         B_hat_s[s]        <- (1 - gamma_t) * B_hat_s[s] + gamma_t * mean_logPhi_s
         B_hat_s[s]        <- max(min(B_hat_s[s], -0.3), -3)
 
@@ -338,5 +354,8 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     }
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s)))
+  return(list(mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s),
+              bt_c = bt.c, bs_c = bs.c,
+              xi = xi, xi_s = xi_s,
+              sig_T = sig_T, sig_s = sig_s))
 }
