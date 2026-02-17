@@ -30,9 +30,9 @@ ESS_Gibbs_SAEM(
 
 \item{b.c}{Initial states for latent parameters.}
 
-\item{sd.0}{Prior SD vector for target latent parameters.}
-
 \item{lambda}{Threshold parameter.}
+
+\item{tau}{Initial state for scale parameter.}
 
 \item{N}{Number of MCMC iterations.}
 

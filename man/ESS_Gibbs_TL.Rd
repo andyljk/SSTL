@@ -11,15 +11,18 @@ ESS_Gibbs_TL(
   Y_s,
   bt.c = NULL,
   bs.c = NULL,
-  lambda_T = NULL,
-  lambda_s = NULL,
   xi = NULL,
   xi_s = NULL,
+  sig2_T = NULL,
+  sig2_s = NULL,
+  lambda_T = NULL,
+  lambda_s = NULL,
   N = 5000,
   S.max = 500,
   block_size = 1,
   slab = "exp",
-  verbose = 1
+  verbose = 1,
+  debug = F
 )
 }
 \arguments{
@@ -33,6 +36,10 @@ ESS_Gibbs_TL(
 
 \item{bt.c, bs.c}{Initial states for target and source parameters.}
 
+\item{xi, xi_s}{Initial states for target and source scale parameters.}
+
+\item{sig2_T, sig2_s}{Initial states for target and source variance parameters.}
+
 \item{lambda_T, lambda_s}{Threshold parameters.}
 
 \item{N}{Number of MCMC iterations.}
@@ -45,9 +52,7 @@ ESS_Gibbs_TL(
 
 \item{verbose}{Verbosity flag.}
 
-\item{sd_T}{Prior SD vector for target latent parameters.}
-
-\item{cov_W}{Prior covariance for source weight correlation.}
+\item{debug}{Optional returning of MCMC runs other than the coefficient itself.}
 }
 \value{
 A list containing MCMC draws and diagnostics.

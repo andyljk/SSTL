@@ -7,22 +7,24 @@
 #' @param X_s List of source design matrices.
 #' @param Y_s List of source responses.
 #' @param bt.c,bs.c Initial states for target and source parameters.
-#' @param sd_T Prior SD vector for target latent parameters.
-#' @param cov_W Prior covariance for source weight correlation.
+#' @param xi,xi_s Initial states for target and source scale parameters.
+#' @param sig2_T,sig2_s Initial states for target and source variance parameters.
 #' @param lambda_T,lambda_s Threshold parameters.
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
 #' @param slab Type of slab distribution to use, includes 'exp', 'poly', 'nlp'. Default is 'exp'.
 #' @param verbose Verbosity flag.
+#' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
 ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                          bt.c=NULL, bs.c=NULL,
-                         lambda_T=NULL, lambda_s=NULL,
                          xi=NULL, xi_s=NULL,
+                         sig2_T=NULL, sig2_s=NULL,
+                         lambda_T=NULL, lambda_s=NULL,
                          N=5000, S.max=500, block_size=1, slab = "exp",
-                         verbose=1) {
+                         verbose=1, debug=F) {
 
   slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
@@ -61,16 +63,21 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
 
   d    <- length(bt.c)                   # nr of parameters
   K    <- length(id)                     # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
-  N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
-  N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
-  mc.bt <- matrix(NA, N, d)              # storage for the target parameter
-  MC.beta = MC.alpha = matrix(NA, N, p)
-  mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
-  mc.sig2_T = rep(NA,N); mc.sig2_s = array(NA, dim=c(S,N))
-  mc.tau_T = rep(NA,N); if (is.null(xi)) xi = 1
-  mc.tau_S = array(NA,dim=c(N,S)); if (is.null(xi_s)) xi_s = rep(0.1,S)
+  MC.beta = matrix(NA, N, p)
+  if (debug){
+    N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
+    N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
+    mc.bt <- matrix(NA, N, d)              # storage for the target parameter
+    mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
+    mc.sig2_T = rep(NA,N); mc.sig2_s = array(NA, dim=c(S,N))
+    mc.tau_T = rep(NA,N)
+    mc.tau_S = array(NA,dim=c(N,S))
+  }
 
-  sig2_T = 1; sig2_s = rep(1,S) # initialize noise variance parameters
+  if (is.null(xi)) xi = 1
+  if (is.null(xi_s)) xi_s = rep(0.1,S)
+  if (is.null(sig2_T)) sig2_T = 1
+  if (is.null(sig2_s)) sig2_s = rep(1,S) # initialize noise variance parameters
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
   for(i in 1:N){#  loop over iteration
@@ -85,16 +92,6 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                                    sd_y_T = sqrt(sig2_T), sd_y_S = sqrt(sig2_s),
                                    S_max = S.max, slab_code = slab_code)
     bt.c <- cpp_res_T$bt_c
-    N.t[i,] = cpp_res_T$N_t
-
-    mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
-
-    # update noise variance for target
-    beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
-    MC.beta[i,] = beta_Tc
-    sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
-                      rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
-    mc.sig2_T[i] = sig2_T
 
     # Update Target Scale
     xi <- update_target_scale_cpp(xi_t_curr = xi,
@@ -109,11 +106,19 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                                   tau_S = abs(xi_s),
                                   slab_code = slab_code)
     tau <- abs(xi)
-    mc.tau_T[i] <- tau
 
-    # update prior variance of w in target
-    # tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
-    # sd_T[1:p] = tau2_w^0.5; mc.tau2_wT[i] = tau2_w
+    # update noise variance for target
+    beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
+    sig2_T = 1/rgamma(1, shape = 0.001 + length(Y_T)/2,
+                      rate = 0.001 + 0.5*sum((Y_T-X_T%*%beta_Tc)^2))
+
+    MC.beta[i,] = beta_Tc
+    if (debug){
+      N.t[i,] = cpp_res_T$N_t
+      mc.bt[i, ]    <- bt.c                  # Store the sample for target parameter
+      mc.sig2_T[i] = sig2_T
+      mc.tau_T[i] <- tau
+    }
 
 
     # Calls optimized C++ function (Joint Row-wise updates)
@@ -126,8 +131,6 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                                          S_max = S.max,
                                          slab_code = slab_code)
     bs.c <- cpp_res_S$bs_c
-    mc.bs[,,i]    <- bs.c                  # Store the sample for source bias
-    N.s[i,] = cpp_res_S$N_s
 
     # Update Source Scales (Jointly with Independent Prior)
     xi_s <- update_source_scales_cpp(xi_s_curr = xi_s,
@@ -139,12 +142,6 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                                      sd_y_S = sqrt(sig2_s),
                                      slab_code = slab_code)
     tau_s <- abs(xi_s)
-    mc.tau_S[i, ] <- tau_s
-
-    # draw conditional covariances for w's in source
-    # term_b = matrix(bs.c[1:p,], nrow=p)                            # handle edge case when S=1
-    # cov_W <- riwish(v_0 + p, t(term_b) %*% term_b + W_0)
-    # mc.W[,,i] = cov_W
 
     # update noise variance for sources
     biases <- calc_bias(bs.c,p,lambda_s,tau_s,slab_code)
@@ -152,17 +149,26 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
       beta_sc = biases[,s] + beta_Tc
       sig2_s[s] = 1/rgamma(1, shape = 0.01 + length(Y_s[[s]])/2,
                            rate = 0.01 + 0.5*sum((Y_s[[s]]-X_s[[s]]%*%beta_sc)^2))
-      mc.sig2_s[s,i] = sig2_s[s]
+      if (debug) mc.sig2_s[s,i] = sig2_s[s]
+    }
+
+    if (debug){
+      mc.bs[,,i]    <- bs.c                  # Store the sample for source bias
+      N.s[i,] = cpp_res_S$N_s
+      mc.tau_S[i, ] <- tau_s
     }
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc.bt=mc.bt, mc.bs=mc.bs,
-              MC_beta = MC.beta,
-              n.t=N.t, n.s=N.s,
-              mc.s2_T = mc.sig2_T, mc.s2_s = mc.sig2_s,
-              mc.tau_T = mc.tau_T, mc.tau_S = mc.tau_S)
-  )
+  if (debug){
+    return(list(mc.bt=mc.bt, mc.bs=mc.bs,
+                MC_beta = MC.beta,
+                n.t=N.t, n.s=N.s,
+                mc.s2_T = mc.sig2_T, mc.s2_s = mc.sig2_s,
+                mc.tau_T = mc.tau_T, mc.tau_S = mc.tau_S))
+  }else{
+    return(list(MC_beta = MC.beta))
+  }
 }
 
 
@@ -324,5 +330,8 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
     }
     if (verbose==1) setTxtProgressBar(pb, i)
   }
-  return(list(mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s)))
+  return(list(mc.lam = mc.lam, final_lam = c(lambda_T,lambda_s),
+              bt_c = bt.c, bs_c = bs.c,
+              xi = xi, xi_s = xi_s,
+              sig2_T = sig2_T, sig2_s = sig2_s))
 }

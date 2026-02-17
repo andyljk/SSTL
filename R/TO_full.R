@@ -6,24 +6,26 @@
 #' @param X Design matrix.
 #' @param Y Response vector.
 #' @param b.c Initial states for latent parameters.
-#' @param sd.0 Prior SD vector for target latent parameters.
+#' @param tau Initial state for scale parameter.
+#' @param sd_y Initial state for noise parameter.
 #' @param lambda Threshold parameter.
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
 #' @param slab Specification of the slab distribution. One of 'exp', 'poly', 'nlp'. Default is 'exp'.
 #' @param verbose Verbosity flag.
+#' @param debug Optional returning of MCMC runs other than the coefficient itself
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
-ESS_Gibbs <- function(X,Y,b.c=NULL, sd.0=NULL, lambda=NULL, tau=NULL,
-                      N=5000, block_size=1, S.max=500, slab = "poly", verbose=1) {
+ESS_Gibbs <- function(X,Y, b.c=NULL, tau=NULL, sd_y=NULL, lambda=NULL,
+                      N=5000, block_size=1, S.max=500, slab = "exp", verbose=1, debug=F) {
 
   slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
   if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
 
   p = ncol(X)
-  if (is.null(sd.0)) sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
+  sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
   if (is.null(b.c)) b.c = rnorm(2*p+1,0,sd.0)
 
   id = lapply(seq(1, p, by = block_size), function(start_idx) {
@@ -42,12 +44,15 @@ ESS_Gibbs <- function(X,Y,b.c=NULL, sd.0=NULL, lambda=NULL, tau=NULL,
 
   d    <- length(b.c)                   # nr of parameters
   K    <- length(id)                    # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
-  v    <- sapply(id, length)            # length of each block b.j
-  N.s  <- matrix(NA, N, K)              # nr of slice sampling itr at each MCMC-itr
-  mc.b <- matrix(NA, N, d)              # storage
-  MC.beta = MC.alpha = matrix(NA, N, p)
-  mc.tau = rep(NA,N); if (is.null(tau)) tau = 1
-  mc.var = rep(NA,N); sd_y = 1
+  MC.beta = matrix(NA, N, p)
+  if (debug){
+    N.s  <- matrix(NA, N, K)              # nr of slice sampling itr at each MCMC-itr
+    mc.b <- matrix(NA, N, d)              # storage
+    mc.tau = rep(NA,N);
+    mc.var = rep(NA,N);
+  }
+  if (is.null(tau)) tau = 1
+  if (is.null(sd_y)) sd_y = 1
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
   for(i in 1:N){                         #  loop over iteration
@@ -62,30 +67,39 @@ ESS_Gibbs <- function(X,Y,b.c=NULL, sd.0=NULL, lambda=NULL, tau=NULL,
                                  S_max = S.max,
                                  slab_code = slab_code)
     b.c <- cpp_res$b_c
-    N.s[i, ] <- cpp_res$N_s
-
-    eta_c = X%*%calc_beta(b.c,lambda,tau,p,slab_code)
-    # update noise variance
-    var_y = 1/rgamma(1, shape=0.01 + 0.5*length(Y), 0.01 + 0.5*sum((Y-eta_c)^2))
-    sd_y = var_y^0.5; mc.var[i] = var_y
 
     # update scale parameter for w
     tau = rtruncnorm(1,a=0,b=Inf,
                      mean=1/sd_y^2*sum(Y*eta_c)*(1/2 + 1/sd_y^2 * sum(eta_c^2))^(-1),
                      sd=(1/2 + 1/sd_y^2 * sum(eta_c^2))^(-1))
-    mc.tau[i] = tau
 
-    mc.b[i, ]    <- b.c                  # Store the sample
-    MC.beta[i,] = calc_beta(b.c,lambda,tau,p,slab_code)
+    beta_c = calc_beta(b.c,lambda,tau,p,slab_code)
+    eta_c = X%*%beta_c
+    # update noise variance
+    var_y = 1/rgamma(1, shape=0.01 + 0.5*length(Y), 0.01 + 0.5*sum((Y-eta_c)^2))
+    sd_y = var_y^0.5;
+
+    if (debug){
+      mc.b[i, ]    <- b.c                  # Store the sample
+      N.s[i, ] <- cpp_res$N_s
+      mc.tau[i] = tau
+      mc.var[i] = var_y
+    }
+
+    MC.beta[i,] = beta_c
     if (verbose==1) setTxtProgressBar(pb, i)
   }
 
 
+  if (debug){
+    return(list(mc.b=mc.b, n.s=N.s,
+                MC_beta = MC.beta,
+                mc.tau = mc.tau,
+                mc.var = mc.var))
+  }else{
+    return(list(MC_beta = MC.beta))
+  }
 
-  return(list(mc.b=mc.b, n.s=N.s,
-              beta = MC.beta,
-              mc.tau = mc.tau,
-              mc.var = mc.var))
 }
 
 #' Empirical Bayes estimation of prior spike probabilities of the SpSL model
@@ -206,5 +220,6 @@ ESS_Gibbs_SAEM <- function(X,Y,b.c=NULL,sd.0=NULL, lambda=NULL, tau=NULL,
   }
 
   list(mc.lam       = mc.lam,
-       lambda_final = lambda)
+       lambda_final = lambda,
+       b_c = b.c, tau = tau, sd_y = sd_y)
 }

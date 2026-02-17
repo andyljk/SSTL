@@ -35,6 +35,8 @@ EB_Gibbs_SAEM(
 
 \item{bt.c, bs.c}{Initial states for target and source parameters.}
 
+\item{xi, xi_s}{Initial states for target and source scale parameters.}
+
 \item{N}{Number of MCMC iterations.}
 
 \item{S.max}{Maximum slice iterations per update.}

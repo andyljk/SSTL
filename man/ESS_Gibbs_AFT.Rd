@@ -9,14 +9,16 @@ ESS_Gibbs_AFT(
   Y,
   C,
   b.c = NULL,
-  sd.0 = NULL,
+  xi = NULL,
+  sd_y = NULL,
   lambda = NULL,
   N = 5000,
   S.max = 100,
   block_size = 1,
   family = "Weibull",
   slab = "exp",
-  verbose = 1
+  verbose = 1,
+  debug = F
 )
 }
 \arguments{
@@ -28,7 +30,9 @@ ESS_Gibbs_AFT(
 
 \item{b.c}{Initial states for latent parameters.}
 
-\item{sd.0}{Prior SD vector for target latent parameters.}
+\item{xi}{shadow variable for slab scale parameter.}
+
+\item{sd_y}{scale variable for noise.}
 
 \item{lambda}{Threshold parameter.}
 
@@ -43,6 +47,8 @@ ESS_Gibbs_AFT(
 \item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
 
 \item{verbose}{Verbosity flag.}
+
+\item{debug}{Optional returning of MCMC runs other than the coefficient itself.}
 }
 \value{
 A list containing MCMC draws and diagnostics.

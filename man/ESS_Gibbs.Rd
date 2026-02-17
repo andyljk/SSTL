@@ -8,14 +8,15 @@ ESS_Gibbs(
   X,
   Y,
   b.c = NULL,
-  sd.0 = NULL,
-  lambda = NULL,
   tau = NULL,
+  sd_y = NULL,
+  lambda = NULL,
   N = 5000,
   block_size = 1,
   S.max = 500,
-  slab = "poly",
-  verbose = 1
+  slab = "exp",
+  verbose = 1,
+  debug = F
 )
 }
 \arguments{
@@ -25,7 +26,9 @@ ESS_Gibbs(
 
 \item{b.c}{Initial states for latent parameters.}
 
-\item{sd.0}{Prior SD vector for target latent parameters.}
+\item{tau}{Initial state for scale parameter.}
+
+\item{sd_y}{Initial state for noise parameter.}
 
 \item{lambda}{Threshold parameter.}
 
@@ -38,6 +41,8 @@ ESS_Gibbs(
 \item{slab}{Specification of the slab distribution. One of 'exp', 'poly', 'nlp'. Default is 'exp'.}
 
 \item{verbose}{Verbosity flag.}
+
+\item{debug}{Optional returning of MCMC runs other than the coefficient itself}
 }
 \value{
 A list containing MCMC draws and diagnostics.

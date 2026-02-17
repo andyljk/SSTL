@@ -6,7 +6,8 @@
 #' @param Y Response.
 #' @param C Observation indicator.
 #' @param b.c Initial states for latent parameters.
-#' @param sd.0 Prior SD vector for target latent parameters.
+#' @param xi shadow variable for slab scale parameter.
+#' @param sd_y scale variable for noise.
 #' @param lambda Threshold parameter.
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
@@ -14,12 +15,12 @@
 #' @param family Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.
 #' @param slab Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.
 #' @param verbose Verbosity flag.
+#' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
-ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
-                          sd.0=NULL, lambda=NULL, N=5000,
-                          S.max=100, block_size=1,
-                          family="Weibull", slab = "exp", verbose=1) {
+ESS_Gibbs_AFT <- function(X,Y,C, b.c=NULL, xi=NULL, sd_y=NULL, lambda=NULL,
+                          N=5000, S.max=100, block_size=1,
+                          family="Weibull", slab = "exp", verbose=1, debug=F) {
 
   fam_map <- c("weibull" = 1, "loglogistic" = 2, "lognormal" = 3)
   fam_code <- fam_map[tolower(family)]
@@ -35,7 +36,7 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   C <- as.numeric(C)
 
   p = ncol(X)
-  if (is.null(sd.0)) sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
+  sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
   if (is.null(b.c)) b.c = rnorm(2*p+1,0,sd.0)
   id <- lapply(seq(1, p, by = block_size), function(start_idx) {
     end_idx <- min(start_idx + block_size - 1, p)
@@ -52,12 +53,16 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
 
   d    <- length(b.c)                   # nr of parameters
   K    <- length(id)                    # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
-  N.s  <- matrix(NA, N, K)              # nr of slice sampling itr at each MCMC-itr
-  mc.b <- matrix(NA, N, d)              # storage
-  MC.beta = MC.alpha = matrix(NA, N, p)
-  mc.tau = rep(NA,N)
-  mc.sigma = rep(NA,N)
-  sd_y = 1; xi = 1
+  MC.beta = matrix(NA, N, p)
+  if (debug){
+    mc.b <- matrix(NA, N, d)              # storage
+    N.s  <- matrix(NA, N, K)              # nr of slice sampling itr at each MCMC-itr
+    mc.tau = rep(NA,N)
+    mc.sigma = rep(NA,N)
+  }
+
+  if (is.null(sd_y)) sd_y = 1
+  if (is.null(xi)) xi = 1
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
   for(i in 1:N){                         #  loop over iteration
@@ -71,7 +76,7 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
                                  slab_code = slab_code)
 
     b.c <- cpp_res$b_c
-    N.s[i, ] <- cpp_res$N_s
+
 
     xi <- update_scale_aft(xi_curr = xi,
                            b_c = b.c, X = X, Y = Y, C = C,
@@ -90,21 +95,28 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
                                 slab_code=slab_code,
                                 step_size = 0.1) # Tune step_size for ~30-40% acceptance
 
-    mc.b[i, ]    <- b.c                  # Store the sample
-    mc.tau[i]   <- abs(xi)
-    mc.sigma[i] <- sd_y
+    if(debug){
+      mc.b[i, ]    <- b.c                  # Store the sample
+      N.s[i, ] <- cpp_res$N_s
+      mc.tau[i]   <- abs(xi)
+      mc.sigma[i] <- sd_y
+    }
     MC.beta[i,] = calc_beta(b.c,lambda,abs(xi),p,slab_code)
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
 
 
+  if (debug){
+    return(list(mc.b=mc.b,
+                MC_beta = MC.beta,
+                n.s=N.s,
+                mc_tau = mc.tau,
+                mc_sigma = mc.sigma))
+  }else{
+    return(list(MC_beta = MC.beta))
+  }
 
-  return(list(mc.b=mc.b,
-              MC_beta = MC.beta,
-              n.s=N.s,
-              mc_tau = mc.tau,
-              mc_sigma = mc.sigma))
 }
 
 #' Empirical Bayes estimation of prior spike probabilities of the SpSL model
@@ -240,5 +252,6 @@ EB_SAEM_AFT <- function(X,Y,C,b.c=NULL,
   }
 
   list(mc.lam    = mc.lam,
-       lambda_final = lambda)
+       lambda_final = lambda,
+       b_c = b.c, xi = xi, sd_y=sd_y)
 }

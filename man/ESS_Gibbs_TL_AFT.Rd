@@ -59,7 +59,7 @@ ESS_Gibbs_TL_AFT(
 
 \item{verbose}{Verbosity flag.}
 
-\item{debug}{Optional returning of MCMC runs other than the coefficient itself}
+\item{debug}{Optional returning of MCMC runs other than the coefficient itself.}
 }
 \value{
 A list containing MCMC draws and diagnostics.

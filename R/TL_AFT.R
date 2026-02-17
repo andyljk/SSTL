@@ -17,7 +17,7 @@
 #' @param family Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.
 #' @param slab Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.
 #' @param verbose Verbosity flag.
-#' @param debug Optional returning of MCMC runs other than the coefficient itself
+#' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @return A list containing MCMC draws and diagnostics.
 #' @export
 # elliptical slice sampling within gibbs function
