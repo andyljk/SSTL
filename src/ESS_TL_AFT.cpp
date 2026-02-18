@@ -375,6 +375,7 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
 
   double xi_prop = xi_t_curr;
 
+  int iter = 0;
   while(true) {
     // Propose new shadow variable
     xi_prop = xi_t_curr * cos(theta) + nu * sin(theta);
@@ -395,6 +396,11 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
     if(prop_ll > log_y_thresh) {
       break;
     } else {
+      iter++;
+      if (iter >= 20) {
+        xi_prop = xi_t_curr; // Revert to current state (Reject)
+        break;
+      }
       if(theta < 0) theta_min = theta;
       else theta_max = theta;
       theta = R::runif(theta_min, theta_max);
@@ -455,6 +461,7 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
   vec xi_prop = xi_s_curr;
   vec resid; // preallocate memory
 
+  int iter = 0;
   while(true) {
     // Propose new shadow variables
     xi_prop = xi_s_curr * cos(theta) + nu * sin(theta);
@@ -469,6 +476,11 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
     if(prop_ll > log_y_thresh) {
       break;
     } else {
+      iter++;
+      if (iter > 20) {
+        xi_prop = xi_s_curr; // Revert to current state (Reject)
+        break;
+      }
       if(theta < 0) theta_min = theta;
       else theta_max = theta;
       theta = R::runif(theta_min, theta_max);

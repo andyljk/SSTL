@@ -177,6 +177,7 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
   double xi_prop = xi_curr;
 
   // 3. ESS Loop
+  int iter = 0;
   while(true) {
     // Propose new Shadow Variable on the ellipse
     xi_prop = xi_curr * cos(theta) + nu * sin(theta);
@@ -189,6 +190,11 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     if(prop_ll > log_y_thresh) {
       break;
     } else {
+      iter++;
+      if (iter >= 20) {
+        xi_prop = xi_curr; // Revert to current state (Reject)
+        break;
+      }
       // Shrink the bracket
       if(theta < 0) theta_min = theta;
       else theta_max = theta;
