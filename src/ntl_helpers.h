@@ -68,6 +68,25 @@ inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
   }
 }
 
+// --- Define Scalar Beta Calculation Lambda ---
+inline double calc_scalar_beta(double w_val, double a_val, double thresh, double tau_s, int slab_code) {
+  double act, h_w;
+  if (slab_code == 1){
+    act = (a_val > thresh) ? (a_val - thresh) : 0.0;
+    h_w = w_val;
+  } else if (slab_code == 2) {
+    act = (a_val > thresh) ? (a_val - thresh) : 0.0;
+    h_w = (w_val > 0 ? 1.0 : -1.0) * std::exp(0.5 * w_val * w_val);
+  } else if (slab_code == 3){
+    act = (a_val > thresh) ? 1.0 : 0.0;
+    h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::pow(std::expm1(2.0 * w_val * w_val), 0.25);
+  } else {
+    act = (a_val > thresh) ? 1.0 : 0.0;
+    h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::sqrt(std::abs(w_val)) * std::exp(0.5 * w_val * w_val);
+  }
+  return tau_s * h_w * act;
+};
+
 inline double log_lik_resid(const arma::vec& resid, double sd_y) {
   double n = resid.n_elem;
   double rss = sum(square(resid));
@@ -75,25 +94,34 @@ inline double log_lik_resid(const arma::vec& resid, double sd_y) {
 }
 
 inline double log_lik_aft(const arma::vec& resid, const arma::vec& C, double sd_y, int fam_code) {
-  arma::vec z = resid / sd_y;
   double ll = 0.0;
+  double inv_sd = 1.0 / sd_y;
+  double log_sd = std::log(sd_y);
+  int n = resid.n_elem;
+  const double* r_ptr = resid.memptr();
+  const double* c_ptr = C.memptr();
 
   if (fam_code == 1) { // --- Weibull ---
-    double term1 = dot(C, z) - accu(C) * log(sd_y);
-    double term2 = sum(exp(z));
-    ll = term1 - term2;
+    for(int i = 0; i < n; i++) {
+      double zi = r_ptr[i] * inv_sd;
+      double ci = c_ptr[i];
+      ll += ci * zi - std::exp(zi) - ci * log_sd;
+    }
 
   } else if (fam_code == 2) { // --- Log-Logistic ---
-    arma::vec log_denom = log(1.0 + exp(z));
-    ll = dot(C, z - log(sd_y)) - dot(1.0 + C, log_denom);
+    for(int i = 0; i < n; ++i) {
+      double zi = r_ptr[i] * inv_sd;
+      double ci = c_ptr[i];
+      ll += ci * (zi - log_sd) - (1.0 + ci) * std::log1p(std::exp(zi));
+    }
 
   } else if (fam_code == 3) { // --- Log-Normal (Gaussian Errors) ---
-    int n = resid.n_elem;
-    for(int i=0; i<n; i++) {
-      if(C(i) == 1.0) {
-        ll += R::dnorm(z(i), 0.0, 1.0, 1) - log(sd_y);
+    for(int i = 0; i < n; ++i) {
+      double zi = r_ptr[i] * inv_sd;
+      if(c_ptr[i] == 1.0) {
+        ll += R::dnorm(zi, 0.0, 1.0, 1) - log_sd;
       } else {
-        ll += R::pnorm(-z(i), 0.0, 1.0, 1, 1);
+        ll += R::pnorm(-zi, 0.0, 1.0, 1, 1);
       }
     }
   }

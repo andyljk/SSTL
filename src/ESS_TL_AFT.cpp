@@ -80,6 +80,12 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
     int n_s = 0;
 
     // B. Slice Loop
+    vec resid_T_prop = resid_T;
+    std::vector<vec> resid_S_prop(S);
+    for(int s = 0; s < S; s++) {
+      resid_S_prop[s] = resid_S[s];
+    }
+
     while(n_s < S_max) {
       n_s++;
       vec f_prop = f_curr * cos(theta) + nu * sin(theta);
@@ -113,7 +119,7 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
 
       // 2. Update Source Residuals
       double ll_S_prop_total = 0;
-      std::vector<vec> resid_S_prop(S);
+
 
       for(int s=0; s<S; s++) {
         mat X_s = X_S_list[s];
@@ -210,6 +216,16 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
 
     int n_s = 0;
 
+    std::vector<arma::vec> resid_S_prop(S);
+    std::vector<double> precomputed_thresh(S, 0.0);
+    if (j < 2 * p) {
+      for (int s = 0; s < S; s++) {
+        double a0_fixed = bs_c(2 * p, s);
+        double lam = lambda_S(s);
+        double thresh_prob = std::pow(ntl::pnorm_custom(a0_fixed), 1.0 / lam);
+        precomputed_thresh[s] = ntl::qnorm_custom(thresh_prob);
+      }
+    }
     // C. Slice Loop
     while(n_s < S_max) {
       n_s++;
@@ -219,7 +235,6 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
 
       // Calculate Likelihood Delta
       double prop_ll_total = 0;
-      std::vector<vec> resid_S_prop(S); // Store potential new residuals
 
       for(int s=0; s<S; s++) {
         double val_new = f_prop_row(s);
@@ -233,13 +248,13 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           // CASE 1: Global a0 update (recompute full vector)
           vec bs_col = bs_c.col(s);
           vec bias_old = ntl::get_beta(bs_col.subvec(0, p-1),
-                                  bs_col.subvec(p, 2*p-1), tau_S(s),
-                                  bs_col(2*p), lam, slab_code);
+                                       bs_col.subvec(p, 2*p-1), tau_S(s),
+                                       bs_col(2*p), lam, slab_code);
 
           // Construct New Bias (Vector)
           vec bias_new = ntl::get_beta(bs_col.subvec(0, p-1),
-                                  bs_col.subvec(p, 2*p-1), tau_S(s),
-                                  val_new, lam, slab_code); // Use val_new for a0
+                                       bs_col.subvec(p, 2*p-1), tau_S(s),
+                                       val_new, lam, slab_code); // Use val_new for a0
 
           vec diff = bias_new - bias_old;
           resid_S_prop[s] -= X * diff;
@@ -249,38 +264,17 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           int k = j % p;
           double w_fixed = bs_c(k, s);
           double a_fixed = bs_c(k+p, s);
-          double a0_fixed = bs_c(2*p, s);
 
           // Determine Threshold
-          double thresh_prob = std::pow(ntl::pnorm_custom(a0_fixed), 1.0/lam);
-          double thresh = ntl::qnorm_custom(thresh_prob);
-
-          // --- Define Scalar Beta Calculation Lambda ---
-          auto calc_scalar_beta = [&](double w_val, double a_val) {
-            double act, h_w;
-            if (slab_code == 1){
-              act = (a_val > thresh) ? (a_val - thresh) : 0.0;
-              h_w = w_val;
-            } else if (slab_code == 2) {
-              act = (a_val > thresh) ? (a_val - thresh) : 0.0;
-              h_w = (w_val > 0 ? 1.0 : -1.0) * std::exp(0.5 * w_val * w_val);
-            } else if (slab_code == 3){
-              act = (a_val > thresh) ? 1.0 : 0.0;
-              h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::pow(std::expm1(2.0 * w_val * w_val), 0.25);
-            } else {
-              act = (a_val > thresh) ? 1.0 : 0.0;
-              h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::sqrt(std::abs(w_val)) * std::exp(0.5 * w_val * w_val);
-            }
-            return tau_S(s) * h_w * act;
-          };
+          double thresh = precomputed_thresh[s];
 
           // 1. Beta Old
-          double beta_old_k = calc_scalar_beta(w_fixed, a_fixed);
+          double beta_old_k = ntl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
 
           // 2. Beta New (Swap parameter)
           double w_temp = (j < p) ? val_new : w_fixed;
           double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = calc_scalar_beta(w_temp, a_temp);
+          double beta_new_k = ntl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;

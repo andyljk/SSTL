@@ -251,32 +251,13 @@ List update_source_joint_cpp(arma::mat bs_c, // (2p+1) x S matrix
           double thresh_prob = std::pow(ntl::pnorm_custom(a0_fixed), 1.0/lam);
           double thresh = ntl::qnorm_custom(thresh_prob);
 
-          // --- Define Scalar Beta Calculation Lambda ---
-          auto calc_scalar_beta = [&](double w_val, double a_val) {
-            double act, h_w;
-            if (slab_code == 1){
-              act = (a_val > thresh) ? (a_val - thresh) : 0.0;
-              h_w = w_val;
-            } else if (slab_code == 2) {
-              act = (a_val > thresh) ? (a_val - thresh) : 0.0;
-              h_w = (w_val > 0 ? 1.0 : -1.0) * std::exp(0.5 * w_val * w_val);
-            } else if (slab_code == 3){
-              act = (a_val > thresh) ? 1.0 : 0.0;
-              h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::pow(std::expm1(2.0 * w_val * w_val), 0.25);
-            } else {
-              act = (a_val > thresh) ? 1.0 : 0.0;
-              h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::sqrt(std::abs(w_val)) * std::exp(0.5 * w_val * w_val);
-            }
-            return tau_S(s) * h_w * act;
-          };
-
           // 1. Beta Old
-          double beta_old_k = calc_scalar_beta(w_fixed, a_fixed);
+          double beta_old_k = ntl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
 
           // 2. Beta New (Swap parameter)
           double w_temp = (j < p) ? val_new : w_fixed;
           double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = calc_scalar_beta(w_temp, a_temp);
+          double beta_new_k = ntl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;
