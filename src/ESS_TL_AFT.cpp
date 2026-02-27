@@ -26,6 +26,16 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   int S = X_S_list.size();
   int K = id.size();
 
+  // Preallocate matrices to save speed
+  std::vector<arma::mat> X_s_cpp(S);
+  std::vector<arma::vec> C_s_cpp(S);
+  std::vector<arma::vec> Y_s_cpp(S);
+  for(int s=0; s<S; s++) {
+    X_s_cpp[s] = as<arma::mat>(X_S_list[s]);
+    C_s_cpp[s] = as<arma::vec>(C_S_list[s]);
+    Y_s_cpp[s] = as<arma::vec>(Y_S_list[s]);
+  }
+
   // Current Beta_T
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
@@ -41,10 +51,6 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   double ll_S_total = 0;
 
   for(int s=0; s<S; s++) {
-    mat X_s = X_S_list[s];
-    vec Y_s = Y_S_list[s];
-    vec C_s = C_S_list[s];
-
     // Construct Bias for Source s
     vec bs_col = bs_c.col(s);
     vec w_s = bs_col.subvec(0, p-1);
@@ -53,8 +59,8 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
     vec bias_s = ntl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code);
 
     // Residual = Y - X * (beta_T + bias)
-    resid_S[s] = Y_s - X_s * (beta_T + bias_s);
-    ll_S_total += ntl::log_lik_aft(resid_S[s], C_s, sd_y_S(s), fam_code);
+    resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias_s);
+    ll_S_total += ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
   }
 
   double current_ll_global = ll_T + ll_S_total;
@@ -104,7 +110,7 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
       vec delta_beta = beta_T_prop - beta_T;
 
       // 1. Update Target Residual
-      vec resid_T_prop = resid_T;
+      resid_T_prop = resid_T;
       if (k == K - 1) { // Global a0 update
         resid_T_prop -= X_T * delta_beta;
       } else { // Sparse update
@@ -122,23 +128,20 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
 
 
       for(int s=0; s<S; s++) {
-        mat X_s = X_S_list[s];
-        vec C_s = C_S_list[s];
-        vec r_s_curr = resid_S[s]; // copy current resid
+        resid_S_prop[s] = resid_S[s]; // copy current resid
 
         // Apply same delta_beta to source
         if (k == K - 1) {
-          r_s_curr -= X_s * delta_beta;
+          resid_S_prop[s] -= X_s_cpp[s] * delta_beta;
         } else {
           int half = idx.n_elem / 2;
           uword start = idx(0);
           uword end = idx(half-1);
           vec d_sub = delta_beta.subvec(start, end);
-          r_s_curr -= X_s.cols(start, end) * d_sub;
+          resid_S_prop[s] -= X_s_cpp[s].cols(start, end) * d_sub;
         }
 
-        resid_S_prop[s] = r_s_curr;
-        ll_S_prop_total += ntl::log_lik_aft(r_s_curr, C_s, sd_y_S(s), fam_code);
+        ll_S_prop_total += ntl::log_lik_aft(resid_S_prop[s], C_s_cpp[s], sd_y_S(s), fam_code);
       }
 
       double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -180,20 +183,26 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
   int S = bs_c.n_cols;
   int n_params = bs_c.n_rows; // 2p + 1
 
+  std::vector<arma::mat> X_s_cpp(S);
+  std::vector<arma::vec> C_s_cpp(S);
+  std::vector<arma::vec> Y_s_cpp(S);
+  for(int s=0; s<S; s++) {
+    X_s_cpp[s] = as<arma::mat>(X_s_list[s]);
+    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
+    Y_s_cpp[s] = as<arma::vec>(Y_s_list[s]);
+  }
+
   // Pre-Calculate Current Residuals for ALL Sources
   std::vector<vec> resid_S(S);
   std::vector<double> ll_S(S);
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    mat X = X_s_list[s];
-    vec Y = Y_s_list[s];
-    vec C = C_s_list[s];
     vec bias = ntl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code);
 
     // Residual = Y - X(beta_T + bias)
-    resid_S[s] = Y - X * (beta_T + bias);
-    ll_S[s] = ntl::log_lik_aft(resid_S[s], C, sd_y_S(s), fam_code);
+    resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias);
+    ll_S[s] = ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
     current_ll_total += ll_S[s];
   }
 
@@ -240,8 +249,6 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
         double val_new = f_prop_row(s);
 
         resid_S_prop[s] = resid_S[s];
-        mat X = X_s_list[s];
-        vec C = C_s_list[s];
         double lam = lambda_S(s);
 
         if (j == 2*p) {
@@ -257,7 +264,7 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
                                        val_new, lam, slab_code); // Use val_new for a0
 
           vec diff = bias_new - bias_old;
-          resid_S_prop[s] -= X * diff;
+          resid_S_prop[s] -= X_s_cpp[s] * diff;
 
         } else {
           // --- CASE 2: Local w_k or a_k (Scalar Math) ---
@@ -278,10 +285,10 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;
-          resid_S_prop[s] -= X.col(k) * d_val;
+          resid_S_prop[s] -= X_s_cpp[s].col(k) * d_val;
         }
 
-        prop_ll_total += ntl::log_lik_aft(resid_S_prop[s], C, sd_y_S(s), fam_code);
+        prop_ll_total += ntl::log_lik_aft(resid_S_prop[s], C_s_cpp[s], sd_y_S(s), fam_code);
       }
 
       if(prop_ll_total > log_y_threshold) {

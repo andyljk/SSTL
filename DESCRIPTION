@@ -1,6 +1,6 @@
 Package: NTL
 Title: Bayesian Transfer Learning via Neuronized Priors
-Version: 0.2.7
+Version: 0.2.8
 Authors@R:
     person("Jiakun", "Li", email = "li003453@umn.edu", role = c("aut", "cre"))
 Description: Implements Bayesian transfer learning for high-dimensional
