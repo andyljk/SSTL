@@ -52,39 +52,46 @@ List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, co
     // --- B. SLICE LOOP ---
     int n_s = 0;
 
+    // PRE-ALLOCATE OUTSIDE THE LOOP
+    vec resid_prop = resid;
+    vec beta_prop;
+    uword start_col = 0, end_col = 0;
+
     while(n_s < S_max) {
       n_s++;
 
       // 1. Propose new state
       vec f_prop = f_curr * cos(theta) + nu * sin(theta);
-
-      // 2. Construct tentative beta
-      // We update the full b_c vector temporarily
-      vec b_prop = b_c;
-      b_prop.elem(idx) = f_prop;
-
-      vec w_prop = b_prop.subvec(0, p-1);
-      vec a_prop = b_prop.subvec(p, 2*p-1);
-      double a0_prop = b_prop(2*p);
-
-      vec beta_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
-
-      // 3. Simplified Likelihood Update
-      vec delta_beta = beta_prop - beta;
-      vec resid_prop = resid;
+      resid_prop = resid;
 
       if (k == K - 1) {
         // CASE 1: Last block (a0) -> Global Update
-        resid_prop = resid - X * delta_beta;
+        vec b_prop = b_c;
+        b_prop.elem(idx) = f_prop;
+
+        vec w_prop = b_prop.subvec(0, p-1);
+        vec a_prop = b_prop.subvec(p, 2*p-1);
+        double a0_prop = b_prop(2*p);
+
+        beta_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
+        vec delta_beta = beta_prop - beta;
+
+        resid_prop -= X * delta_beta;
 
       } else {
         // CASE 2: Standard Block (w + a) -> Local Update
-
         int half_size = idx.n_elem / 2;
-        uword start_col = idx(0);              // First w index
-        uword end_col = idx(half_size - 1);    // Last w index
+        start_col = idx(0) % p;
+        end_col = idx(half_size - 1) % p;
 
-        vec d_sub = delta_beta.subvec(start_col, end_col);
+        // Extract the proposed w and a ONLY for this specific block
+        vec w_sub_prop = f_prop.subvec(0, half_size - 1);
+        vec a_sub_prop = f_prop.subvec(half_size, idx.n_elem - 1);
+        beta_prop = ntl::get_beta(w_sub_prop, a_sub_prop, tau, a0, lambda, slab_code);
+
+        // Extract the current beta for these specific columns
+        vec beta_sub_curr = beta.subvec(start_col, end_col);
+        vec d_sub = beta_prop - beta_sub_curr;
         resid_prop -= X.cols(start_col, end_col) * d_sub;
       }
 
@@ -92,8 +99,12 @@ List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, co
 
       if(ll_prop > log_y_threshold) {
         // ACCEPT
-        b_c = b_prop;
-        beta = beta_prop;
+        b_c.elem(idx) = f_prop;
+        if (k == K - 1) {
+          beta = beta_prop;
+        } else {
+          beta.subvec(start_col, end_col) = beta_prop;
+        }
         resid = resid_prop;
         current_ll = ll_prop;
         break;
@@ -176,6 +187,8 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
 
   double xi_prop = xi_curr;
 
+  vec resid_prop(Y.n_elem);
+
   // 3. ESS Loop
   int iter = 0;
   while(true) {
@@ -184,7 +197,7 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     double scale_prop = std::abs(xi_prop);
 
     // Fast Residual Update (Vector Subtraction only)
-    vec resid_prop = Y - scale_prop * Z;
+    resid_prop = Y - scale_prop * Z;
     double prop_ll = ntl::log_lik_aft(resid_prop, C, sd_y, fam_code);
 
     if(prop_ll > log_y_thresh) {
