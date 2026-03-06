@@ -17,28 +17,28 @@ update_source_scales_cpp <- function(xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, 
     .Call(`_NTL_update_source_scales_cpp`, xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, beta_T, lambda_S, sd_y_S, slab_code)
 }
 
-update_target_aft <- function(bt_c, X_T, Y_T, C_T, X_S_list, Y_S_list, C_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, fam_code, slab_code) {
-    .Call(`_NTL_update_target_aft`, bt_c, X_T, Y_T, C_T, X_S_list, Y_S_list, C_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, fam_code, slab_code)
+update_target_aft <- function(bt_c, X_T, Y_T, C_T, X_S_list, Y_S_list, C_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, fam_code, slab_code, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_target_aft`, bt_c, X_T, Y_T, C_T, X_S_list, Y_S_list, C_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, fam_code, slab_code, approx, k_apx)
 }
 
-update_source_joint_aft <- function(bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code) {
-    .Call(`_NTL_update_source_joint_aft`, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code)
+update_source_joint_aft <- function(bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_source_joint_aft`, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code, approx, k_apx)
 }
 
-update_target_scale_aft <- function(xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, C_T, X_s_list, Y_s_list, C_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, fam_code, slab_code) {
-    .Call(`_NTL_update_target_scale_aft`, xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, C_T, X_s_list, Y_s_list, C_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, fam_code, slab_code)
+update_target_scale_aft <- function(xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, C_T, X_s_list, Y_s_list, C_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, fam_code, slab_code, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_target_scale_aft`, xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, C_T, X_s_list, Y_s_list, C_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, fam_code, slab_code, approx, k_apx)
 }
 
-update_source_scales_aft <- function(xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, sd_y_S, fam_code, slab_code) {
-    .Call(`_NTL_update_source_scales_aft`, xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, sd_y_S, fam_code, slab_code)
+update_source_scales_aft <- function(xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, sd_y_S, fam_code, slab_code, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_source_scales_aft`, xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, sd_y_S, fam_code, slab_code, approx, k_apx)
 }
 
-update_sigma_target_tl_aft <- function(bt_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size = 0.1) {
-    .Call(`_NTL_update_sigma_target_tl_aft`, bt_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size)
+update_sigma_target_tl_aft <- function(bt_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size = 0.1, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_sigma_target_tl_aft`, bt_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size, approx, k_apx)
 }
 
-update_sigma_source_tl_aft <- function(bs_col, beta_T, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size = 0.1) {
-    .Call(`_NTL_update_sigma_source_tl_aft`, bs_col, beta_T, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size)
+update_sigma_source_tl_aft <- function(bs_col, beta_T, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size = 0.1, approx = FALSE, k_apx = 10.0) {
+    .Call(`_NTL_update_sigma_source_tl_aft`, bs_col, beta_T, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size, approx, k_apx)
 }
 
 update_blocks_cpp <- function(b_c, X, Y, id, sd_0, lambda, tau, sd_y, S_max, slab_code) {

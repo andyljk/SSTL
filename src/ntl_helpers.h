@@ -11,7 +11,16 @@ inline arma::vec T_n1_cpp(arma::vec x) {
   arma::uword n = x.n_elem;
   arma::vec out(n);
   for(arma::uword i = 0; i < n; ++i) {out[i] = (x[i] > 0.0);}
-  return out; // 1.0 / (1.0 + arma::exp(-20.0 * x));
+  return out;
+}
+
+inline arma::vec T_log_cpp(arma::vec x, double k=10.0) {
+  arma::uword n = x.n_elem;
+  arma::vec out(n);
+  double* out_ptr = out.memptr();
+  const double* x_ptr = x.memptr();
+  for(arma::uword i = 0; i < n; ++i) {out_ptr[i] = 1.0 / (1.0 + std::exp(-k * x_ptr[i]));}
+  return out;
 }
 
 // 2.1 Helper: The Neuronized Transformation H(x) = sign(x)*exp(x^2)
@@ -51,7 +60,7 @@ inline arma::vec H_l_cpp(arma::vec w) {
 
 // 3. Helper: Calculate Beta from latent vectors w, a, a0
 inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
-             double a0, double lambda, int slab_code) {
+                          double a0, double lambda, int slab_code, bool approx=false, double k_apx=10.0) {
   // Threshold calculation: qnorm(pnorm(a0)^(1/lambda))
   double thresh_prob = std::pow(pnorm_custom(a0), 1.0/lambda);
   double threshold = qnorm_custom(thresh_prob);
@@ -62,14 +71,17 @@ inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
   }else if (slab_code==2){
     return tau * H_c_cpp(w) % T_c_cpp(a - threshold);
   }else if (slab_code == 3){
-    return tau * H_n1_cpp(w) % T_n1_cpp(a - threshold);
+    arma::vec act = approx ? T_log_cpp(a - threshold, k_apx) : T_n1_cpp(a - threshold);
+    return tau * H_n1_cpp(w) % act;
   }else {
     return tau * H_n2_cpp(w) % T_n2_cpp(a - threshold);
   }
 }
 
 // --- Define Scalar Beta Calculation Lambda ---
-inline double calc_scalar_beta(double w_val, double a_val, double thresh, double tau_s, int slab_code) {
+inline double calc_scalar_beta(double w_val, double a_val, double thresh,
+                               double tau_s, int slab_code,
+                               bool approx = false, double k_apx = 10.0) {
   double act, h_w;
   if (slab_code == 1){
     act = (a_val > thresh) ? (a_val - thresh) : 0.0;
@@ -78,7 +90,7 @@ inline double calc_scalar_beta(double w_val, double a_val, double thresh, double
     act = (a_val > thresh) ? (a_val - thresh) : 0.0;
     h_w = (w_val > 0 ? 1.0 : -1.0) * std::exp(0.5 * w_val * w_val);
   } else if (slab_code == 3){
-    act = (a_val > thresh) ? 1.0 : 0.0;
+    act = approx ? 1.0 / (1.0 + std::exp(-k_apx * (a_val-thresh))) : (a_val > thresh) ? 1.0 : 0.0;
     h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::pow(std::expm1(2.0 * w_val * w_val), 0.25);
   } else {
     act = (a_val > thresh) ? 1.0 : 0.0;
@@ -129,11 +141,13 @@ inline double log_lik_aft(const arma::vec& resid, const arma::vec& C, double sd_
   return ll;
 }
 
-inline arma::vec calc_bias_vec(const arma::vec& bs_col, double tau_s, int p, double lambda, int slab_code) {
+inline arma::vec calc_bias_vec(const arma::vec& bs_col, double tau_s, int p,
+                               double lambda, int slab_code,
+                               bool approx = false, double k_apx = 10.0) {
   arma::vec w = bs_col.subvec(0, p-1);
   arma::vec a = bs_col.subvec(p, 2*p-1);
   double a0 = bs_col(2*p);
-  return get_beta(w, a, tau_s, a0, lambda, slab_code);
+  return get_beta(w, a, tau_s, a0, lambda, slab_code, approx, k_apx);
 }
 
 } // namespace ntl

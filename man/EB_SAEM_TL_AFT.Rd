@@ -18,6 +18,7 @@ EB_SAEM_TL_AFT(
   xi = NULL,
   xi_s = NULL,
   N = 5000,
+  burn = 1000,
   S.max = 500,
   block_size = 1,
   family = "Weibull",
@@ -26,6 +27,10 @@ EB_SAEM_TL_AFT(
   lr = 0.1,
   K_block = 10,
   schedule = 0.5,
+  use_approx = F,
+  k_start = 2,
+  k_end = 50,
+  approx_burnin = 0.5,
   verbose = 1
 )
 }
@@ -65,6 +70,8 @@ EB_SAEM_TL_AFT(
 \item{K_block}{Block size (iterations) per SAEM update.}
 
 \item{schedule}{Exponent controlling learning-rate decay (e.g., lr / t^schedule).}
+
+\item{use_approx, k_start, k_end, approx_burnin}{Temporary parameters that might be eliminated in final package.}
 
 \item{verbose}{Verbosity flag.}
 }

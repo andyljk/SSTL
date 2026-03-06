@@ -20,7 +20,8 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
                        double lambda_T, const arma::vec& lambda_S,
                        double tau, const arma::vec& tau_S,
                        double sd_y_T, const arma::vec& sd_y_S,
-                       int S_max, int fam_code, int slab_code) {
+                       int S_max, int fam_code, int slab_code,
+                       bool approx = false, double k_apx = 10.0) {
 
   int p = X_T.n_cols;
   int S = X_S_list.size();
@@ -40,7 +41,7 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
   double a0_T = bt_c(2*p);
-  vec beta_T = ntl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
+  vec beta_T = ntl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code, approx, k_apx);
 
   // Initialize Target Residuals
   vec resid_T = Y_T - X_T * beta_T;
@@ -56,7 +57,7 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
     vec w_s = bs_col.subvec(0, p-1);
     vec a_s = bs_col.subvec(p, 2*p-1);
     double a0_s = bs_col(2*p);
-    vec bias_s = ntl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code);
+    vec bias_s = ntl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code, approx, k_apx);
 
     // Residual = Y - X * (beta_T + bias)
     resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias_s);
@@ -104,7 +105,7 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
       vec a_prop = bt_prop.subvec(p, 2*p-1);
       double a0_prop = bt_prop(2*p);
 
-      vec beta_T_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code);
+      vec beta_T_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code, approx, k_apx);
 
       // --- C. GLOBAL RESIDUAL UPDATE ---
       vec delta_beta = beta_T_prop - beta_T;
@@ -177,7 +178,8 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
                              const arma::vec& beta_T, // Fixed Target Beta
                              const arma::vec& lambda_S, const arma::vec& tau_S,
                              const arma::vec& sd_y_S,
-                             int S_max, int fam_code, int slab_code) {
+                             int S_max, int fam_code, int slab_code,
+                             bool approx = false, double k_apx = 10.0) {
 
   int p = (bs_c.n_rows - 1) / 2;
   int S = bs_c.n_cols;
@@ -198,7 +200,7 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    vec bias = ntl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code);
+    vec bias = ntl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code, approx, k_apx);
 
     // Residual = Y - X(beta_T + bias)
     resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias);
@@ -256,12 +258,14 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           vec bs_col = bs_c.col(s);
           vec bias_old = ntl::get_beta(bs_col.subvec(0, p-1),
                                        bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       bs_col(2*p), lam, slab_code);
+                                       bs_col(2*p), lam, slab_code,
+                                       approx, k_apx);
 
           // Construct New Bias (Vector)
           vec bias_new = ntl::get_beta(bs_col.subvec(0, p-1),
                                        bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       val_new, lam, slab_code); // Use val_new for a0
+                                       val_new, lam, slab_code,
+                                       approx, k_apx); // Use val_new for a0
 
           vec diff = bias_new - bias_old;
           resid_S_prop[s] -= X_s_cpp[s] * diff;
@@ -276,12 +280,12 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           double thresh = precomputed_thresh[s];
 
           // 1. Beta Old
-          double beta_old_k = ntl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
+          double beta_old_k = ntl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code, approx, k_apx);
 
           // 2. Beta New (Swap parameter)
           double w_temp = (j < p) ? val_new : w_fixed;
           double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = ntl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
+          double beta_new_k = ntl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code, approx, k_apx);
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;
@@ -319,7 +323,8 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
                                double lambda_T, const arma::vec& lambda_S,
                                double sd_y_T, const arma::vec& sd_y_S,
                                const arma::vec& tau_S, // Fixed source scales
-                               int fam_code, int slab_code) {
+                               int fam_code, int slab_code,
+                               bool approx = false, double k_apx = 10.0) {
 
   int p = (bt_c.n_elem - 1) / 2;
   int S = X_s_list.size();
@@ -333,7 +338,7 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
   double a0_T = bt_c(2*p);
-  vec beta_T_raw = ntl::get_beta(w_T, a_T, 1.0, a0_T, lambda_T, slab_code);
+  vec beta_T_raw = ntl::get_beta(w_T, a_T, 1.0, a0_T, lambda_T, slab_code, approx, k_apx);
 
   vec Z_T = X_T * beta_T_raw;       // Target Direction
   vec resid_fixed_T = Y_T;          // Target Fixed Residual (Y - 0)
@@ -359,7 +364,8 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
 
     // Calculate Source Bias (Fixed during target scale update)
     vec bias_s = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
-                          tau_S(s), bs_col(2*p), lambda_S(s), slab_code);
+                               tau_S(s), bs_col(2*p), lambda_S(s), slab_code,
+                               approx, k_apx);
     resid_fixed_s_list[s] = Y_s - X_s * bias_s; // Fixed part of residual: Y_s - X_s * bias_s
     Z_s_list[s] = X_s * beta_T_raw; // Variable direction: X_s * beta_T_raw
     resid = resid_fixed_s_list[s] - tau_curr * Z_s_list[s];
@@ -413,13 +419,14 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
 
 // [[Rcpp::export]]
 arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
-                             const double sd_0, // prior variance of scales
-                             const arma::mat& bs_c,
-                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
-                             const arma::vec& beta_T,
-                             const arma::vec& lambda_S,
-                             const arma::vec& sd_y_S,
-                             int fam_code, int slab_code) {
+                                   const double sd_0, // prior variance of scales
+                                   const arma::mat& bs_c,
+                                   const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
+                                   const arma::vec& beta_T,
+                                   const arma::vec& lambda_S,
+                                   const arma::vec& sd_y_S,
+                                   int fam_code, int slab_code,
+                                   bool approx = false, double k_apx = 10.0) {
 
   int S = xi_s_curr.n_elem;
   int p = (bs_c.n_rows - 1) / 2;
@@ -444,7 +451,8 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
 
     // Calculate unscaled bias
     vec bias_init = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
-                             1.0, bs_col(2*p), lambda_S(s), slab_code);
+                                  1.0, bs_col(2*p), lambda_S(s), slab_code,
+                                  approx, k_apx);
     Z_list[s] = X * bias_init; // Calculate linear predictor bias
     resid_fixed_list[s] = Y - X * beta_T; // Calculate fixed residual from target pars
     vec resid = resid_fixed_list[s] - tau_curr(s) * Z_list[s];
@@ -511,14 +519,15 @@ double update_sigma_jeffreys_tl_aft(const arma::vec& resid, const arma::vec& C, 
 // [[Rcpp::export]]
 double update_sigma_target_tl_aft(arma::vec bt_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
                                   double current_sigma, double lambda, double tau,
-                                  int fam_code, int slab_code, double step_size=0.1) {
+                                  int fam_code, int slab_code, double step_size=0.1,
+                                  bool approx = false, double k_apx = 10.0) {
   int p = X.n_cols;
 
   // Reconstruct Beta_T
   vec w = bt_c.subvec(0, p-1);
   vec a = bt_c.subvec(p, 2*p-1);
   double a0 = bt_c(2*p);
-  vec beta_T = ntl::get_beta(w, a, tau, a0, lambda, slab_code);
+  vec beta_T = ntl::get_beta(w, a, tau, a0, lambda, slab_code, approx, k_apx);
 
   vec resid = Y - X * beta_T;
   return update_sigma_jeffreys_tl_aft(resid, C, current_sigma, step_size, fam_code);
@@ -529,11 +538,12 @@ double update_sigma_target_tl_aft(arma::vec bt_c, const arma::mat& X, const arma
 double update_sigma_source_tl_aft(arma::vec bs_col, const arma::vec& beta_T,
                                   const arma::mat& X, const arma::vec& Y, const arma::vec& C,
                                   double current_sigma, double lambda, double tau,
-                                  int fam_code, int slab_code, double step_size=0.1) {
+                                  int fam_code, int slab_code, double step_size=0.1,
+                                  bool approx = false, double k_apx = 10.0) {
   int p = X.n_cols;
 
   // Reconstruct Bias and Beta_S
-  vec bias = ntl::calc_bias_vec(bs_col, tau, p, lambda, slab_code);
+  vec bias = ntl::calc_bias_vec(bs_col, tau, p, lambda, slab_code, approx, k_apx);
   vec beta_s = beta_T + bias;
 
   vec resid = Y - X * beta_s;
