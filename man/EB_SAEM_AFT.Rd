@@ -8,11 +8,9 @@ EB_SAEM_AFT(
   X,
   Y,
   C,
-  b.c = NULL,
-  sd.0 = NULL,
-  lambda = NULL,
   N = 5000,
-  S.max = 100,
+  burn = 1000,
+  S.max = 50,
   block_size = 1,
   lambda_init = 9,
   gamma_power = 0.9,
@@ -21,6 +19,12 @@ EB_SAEM_AFT(
   schedule = 0.5,
   family = "Weibull",
   slab = "exp",
+  optimizer = c("legacy", "adagrad"),
+  adagrad_eps = 1e-08,
+  max_log_step = 0.35,
+  lambda_min = 1e-06,
+  lambda_max = 10000,
+  polyak_start = 0.5,
   verbose = 1
 )
 }
@@ -30,10 +34,6 @@ EB_SAEM_AFT(
 \item{Y}{Response.}
 
 \item{C}{Observation indicator.}
-
-\item{b.c}{Initial states for latent parameters.}
-
-\item{lambda}{Threshold parameter.}
 
 \item{N}{Number of MCMC iterations.}
 
@@ -52,6 +52,10 @@ EB_SAEM_AFT(
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
 
 \item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
+
+\item{optimizer}{"legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.}
+
+\item{polyak_start}{Return average or not, starting from a percentage of the run.}
 
 \item{verbose}{Verbosity flag.}
 }

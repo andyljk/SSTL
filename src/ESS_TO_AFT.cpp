@@ -173,7 +173,7 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
   double nu = R::rnorm(0, sd_prior);
 
   // Initial Likelihood
-  double current_scale = std::abs(xi_curr);
+  double current_scale = std::exp(xi_curr);
   vec resid = Y - current_scale * Z;
   double current_ll = ntl::log_lik_aft(resid, C, sd_y, fam_code);
 
@@ -194,7 +194,7 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
   while(true) {
     // Propose new Shadow Variable on the ellipse
     xi_prop = xi_curr * cos(theta) + nu * sin(theta);
-    double scale_prop = std::abs(xi_prop);
+    double scale_prop = std::exp(xi_prop);
 
     // Fast Residual Update (Vector Subtraction only)
     resid_prop = Y - scale_prop * Z;

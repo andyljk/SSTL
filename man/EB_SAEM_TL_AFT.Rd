@@ -27,10 +27,10 @@ EB_SAEM_TL_AFT(
   lr = 0.1,
   K_block = 10,
   schedule = 0.5,
-  use_approx = F,
-  k_start = 2,
-  k_end = 50,
-  approx_burnin = 0.5,
+  optimizer = c("legacy", "adagrad"),
+  max_log_step = 0.35,
+  polyak = TRUE,
+  polyak_start = 0.5,
   verbose = 1
 )
 }
@@ -71,7 +71,9 @@ EB_SAEM_TL_AFT(
 
 \item{schedule}{Exponent controlling learning-rate decay (e.g., lr / t^schedule).}
 
-\item{use_approx, k_start, k_end, approx_burnin}{Temporary parameters that might be eliminated in final package.}
+\item{optimizer}{"legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.}
+
+\item{polyak, polyak_start}{Boolean to return average or not, starting from a percentage of the run.}
 
 \item{verbose}{Verbosity flag.}
 }

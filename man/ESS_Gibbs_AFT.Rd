@@ -9,9 +9,10 @@ ESS_Gibbs_AFT(
   Y,
   C,
   b.c = NULL,
+  sd.0 = NULL,
+  lambda = NULL,
   xi = NULL,
   sd_y = NULL,
-  lambda = NULL,
   N = 5000,
   S.max = 100,
   block_size = 1,
@@ -30,11 +31,11 @@ ESS_Gibbs_AFT(
 
 \item{b.c}{Initial states for latent parameters.}
 
+\item{lambda}{Threshold parameter.}
+
 \item{xi}{shadow variable for slab scale parameter.}
 
 \item{sd_y}{scale variable for noise.}
-
-\item{lambda}{Threshold parameter.}
 
 \item{N}{Number of MCMC iterations.}
 

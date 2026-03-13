@@ -348,7 +348,7 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
   std::vector<vec> resid_fixed_s_list(S);
 
   double current_ll = 0;
-  double tau_curr = std::abs(xi_t_curr);
+  double tau_curr = std::exp(xi_t_curr);
 
   // Calculate Initial Target LL
   // Resid = Y - tau * Z
@@ -386,7 +386,7 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
   while(true) {
     // Propose new shadow variable
     xi_prop = xi_t_curr * cos(theta) + nu * sin(theta);
-    double tau_prop = std::abs(xi_prop);
+    double tau_prop = std::exp(xi_prop);
 
     double prop_ll = 0;
 
@@ -440,7 +440,7 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
   std::vector<vec> resid_fixed_list(S); // The static part of residual
   double current_ll = 0;
 
-  vec tau_curr = abs(xi_s_curr);
+  vec tau_curr = exp(xi_s_curr);
 
   // Calculate current likelihood & linear predictor bias
   for(int s=0; s<S; s++) {
@@ -474,7 +474,7 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
   while(true) {
     // Propose new shadow variables
     xi_prop = xi_s_curr * cos(theta) + nu * sin(theta);
-    vec tau_prop = abs(xi_prop);
+    vec tau_prop = exp(xi_prop);
 
     double prop_ll = 0;
     for(int s=0; s<S; s++) {
