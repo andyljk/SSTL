@@ -25,7 +25,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                              X_s, Y_s, C_s=NULL, # Source Data (Optional)
                              bt.c=NULL, bs.c=NULL,
                              lambda_T=NULL, lambda_s=NULL,
-                             xi=NULL, xi_s=NULL,
+                             xi=NULL, xi_s=NULL, xi_prior=1,
                              sig_T = NULL, sig_s = NULL,
                              N=5000, S.max=500, block_size=1,
                              family="Weibull", slab = "poly",
@@ -96,7 +96,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 
     # Update Target Scale
     xi <- update_target_scale_aft(xi_t_curr = xi,
-                                  sd_0 = 2.0,
+                                  sd_0 = xi_prior,
                                   bt_c = bt.c,
                                   bs_c = bs.c,
                                   X_T = X_T, Y_T = Y_T, C_T = C_T,

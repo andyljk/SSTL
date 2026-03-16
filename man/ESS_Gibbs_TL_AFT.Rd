@@ -17,6 +17,7 @@ ESS_Gibbs_TL_AFT(
   lambda_s = NULL,
   xi = NULL,
   xi_s = NULL,
+  xi_prior = 1,
   sig_T = NULL,
   sig_s = NULL,
   N = 5000,
