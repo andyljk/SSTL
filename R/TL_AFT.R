@@ -89,7 +89,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                    bs_c = bs.c,
                                    id = id, sd_T = sd_T,
                                    lambda_T = lambda_T, lambda_S = lambda_s,
-                                   tau = exp(xi), tau_S = exp(xi_s),
+                                   tau = abs(xi), tau_S = abs(xi_s),
                                    sd_y_T = sig_T, sd_y_S = sig_s,
                                    S_max = S.max, fam_code=fam_code, slab_code=slab_code)
     bt.c <- cpp_res_T$bt_c
@@ -103,9 +103,9 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                   X_s_list = X_s, Y_s_list = Y_s, C_s_list = C_s,
                                   lambda_T = lambda_T, lambda_S = lambda_s,
                                   sd_y_T = sig_T, sd_y_S = sig_s,
-                                  tau_S = exp(xi_s),
+                                  tau_S = abs(xi_s),
                                   fam_code=fam_code, slab_code = slab_code)
-    tau <- exp(xi)
+    tau <- abs(xi)
 
     # update prior variance of w in target
     # tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
@@ -113,7 +113,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 
     # update scale parameter for target
     sig_T = update_sigma_target_tl_aft(bt.c, X_T, Y_T, C_T,
-                                       sig_T, lambda_T, exp(xi),
+                                       sig_T, lambda_T, abs(xi),
                                        fam_code=fam_code, slab_code=slab_code, step_size=0.1)
 
     if (debug){
@@ -129,12 +129,12 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     # STEP B: Update Sources (Run ONLY if S > 0)
     # ---------------------------------------------------------
     if (S > 0){
-      beta_Tc = calc_beta(bt.c, lambda_T, exp(xi), p, slab_code)
+      beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
 
       cpp_res_S <- update_source_joint_aft(bs_c = bs.c,
                                            X_s_list = X_s, Y_s_list = Y_s, C_s_list = C_s,
                                            beta_T = beta_Tc,
-                                           lambda_S = lambda_s, tau_S = exp(xi_s),
+                                           lambda_S = lambda_s, tau_S = abs(xi_s),
                                            sd_y_S = sig_s,
                                            S_max = S.max,
                                            fam_code=fam_code, slab_code=slab_code)
@@ -149,15 +149,15 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                        lambda_S = lambda_s,
                                        sd_y_S = sig_s,
                                        fam_code = fam_code, slab_code = slab_code)
-      tau_s <- exp(xi_s)
+      tau_s <- abs(xi_s)
 
       # update scale parameter for sources
-      beta_Tc_curr <- calc_beta(bt.c, lambda_T, exp(xi), p, slab_code)
+      beta_Tc_curr <- calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
       for (s in 1:S){
         bs_col <- bs.c[, s] # Extract column for source s
         sig_s[s] <- update_sigma_source_tl_aft(bs_col, beta_Tc_curr,
                                                X_s[[s]], Y_s[[s]], C_s[[s]],
-                                               sig_s[s], lambda_s[s], exp(xi_s[s]),
+                                               sig_s[s], lambda_s[s], abs(xi_s[s]),
                                                fam_code=fam_code, slab_code=slab_code,
                                                step_size=0.1)
         if (debug) mc.sig_s[s, i] <- sig_s[s]
@@ -236,7 +236,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
   # Initialize the parameters from burn in
   bt.c = res$mc_bt[burn,]
   bs.c = matrix(res$mc_bs[,,burn], nrow=2*p+1, ncol=S)
-  xi = log(res$mc_tau_T[burn]); xi_s = log(res$mc_tau_S[burn,])
+  xi = abs(res$mc_tau_T[burn]); xi_s = abs(res$mc_tau_S[burn,])
   sig_T = res$mc_sig_T[burn]; sig_s = res$mc_sig_s[,burn]
 
   mc.lam = array(NA, dim=c(n_blocks,S+1))
@@ -266,11 +266,11 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
                             family=family, slab=slab,
                             verbose=0, debug=TRUE)
     bt.c  <- res$mc_bt[K_block, ]
-    xi    <- log(res$mc_tau_T[K_block])
+    xi    <- abs(res$mc_tau_T[K_block])
     sig_T <- res$mc_sig_T[K_block]
 
     bs.c  <- matrix(res$mc_bs[,,K_block], nrow=2*p+1, ncol=S)
-    xi_s  <- log(res$mc_tau_S[K_block, ])
+    xi_s  <- abs(res$mc_tau_S[K_block, ])
     sig_s <- res$mc_sig_s[, K_block]
 
     # SAEM update
