@@ -11,114 +11,23 @@ Rcpp::Rostream<true>&  Rcpp::Rcout = Rcpp::Rcpp_cout_get();
 Rcpp::Rostream<false>& Rcpp::Rcerr = Rcpp::Rcpp_cerr_get();
 #endif
 
-// update_target_cpp
-List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_T, const Rcpp::List& X_S_list, const Rcpp::List& Y_S_list, const arma::mat& bs_c, const Rcpp::List& id, const arma::vec& sd_T, double lambda_T, const arma::vec& lambda_S, double tau, const arma::vec& tau_S, double sd_y_T, const arma::vec& sd_y_S, int S_max, int slab_code);
-RcppExport SEXP _NTL_update_target_cpp(SEXP bt_cSEXP, SEXP X_TSEXP, SEXP Y_TSEXP, SEXP X_S_listSEXP, SEXP Y_S_listSEXP, SEXP bs_cSEXP, SEXP idSEXP, SEXP sd_TSEXP, SEXP lambda_TSEXP, SEXP lambda_SSEXP, SEXP tauSEXP, SEXP tau_SSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP slab_codeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y_T(Y_TSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_S_list(X_S_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_S_list(Y_S_listSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type id(idSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_T(sd_TSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda_T(lambda_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
-    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
-    Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
-    Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_target_cpp(bt_c, X_T, Y_T, X_S_list, Y_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, slab_code));
-    return rcpp_result_gen;
-END_RCPP
-}
-// update_source_joint_cpp
-List update_source_joint_cpp(arma::mat bs_c, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const arma::vec& beta_T, const arma::vec& lambda_S, const arma::vec& tau_S, const arma::vec& sd_y_S, int S_max, int slab_code);
-RcppExport SEXP _NTL_update_source_joint_cpp(SEXP bs_cSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP beta_TSEXP, SEXP lambda_SSEXP, SEXP tau_SSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP slab_codeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::mat >::type bs_c(bs_cSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta_T(beta_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
-    Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_source_joint_cpp(bs_c, X_s_list, Y_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, slab_code));
-    return rcpp_result_gen;
-END_RCPP
-}
-// update_target_scale_cpp
-double update_target_scale_cpp(double xi_t_curr, const double sd_0, arma::vec bt_c, const arma::mat& bs_c, const arma::mat& X_T, const arma::vec& Y_T, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, double lambda_T, const arma::vec& lambda_S, double sd_y_T, const arma::vec& sd_y_S, const arma::vec& tau_S, int slab_code);
-RcppExport SEXP _NTL_update_target_scale_cpp(SEXP xi_t_currSEXP, SEXP sd_0SEXP, SEXP bt_cSEXP, SEXP bs_cSEXP, SEXP X_TSEXP, SEXP Y_TSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP lambda_TSEXP, SEXP lambda_SSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP tau_SSEXP, SEXP slab_codeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< double >::type xi_t_curr(xi_t_currSEXP);
-    Rcpp::traits::input_parameter< const double >::type sd_0(sd_0SEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y_T(Y_TSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda_T(lambda_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
-    Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_target_scale_cpp(xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, X_s_list, Y_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, slab_code));
-    return rcpp_result_gen;
-END_RCPP
-}
-// update_source_scales_cpp
-arma::vec update_source_scales_cpp(arma::vec xi_s_curr, const double sd_0, const arma::mat& bs_c, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const arma::vec& beta_T, const arma::vec& lambda_S, const arma::vec& sd_y_S, int slab_code);
-RcppExport SEXP _NTL_update_source_scales_cpp(SEXP xi_s_currSEXP, SEXP sd_0SEXP, SEXP bs_cSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP beta_TSEXP, SEXP lambda_SSEXP, SEXP sd_y_SSEXP, SEXP slab_codeSEXP) {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type xi_s_curr(xi_s_currSEXP);
-    Rcpp::traits::input_parameter< const double >::type sd_0(sd_0SEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta_T(beta_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_source_scales_cpp(xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, beta_T, lambda_S, sd_y_S, slab_code));
-    return rcpp_result_gen;
-END_RCPP
-}
 // update_target_aft
-List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T, const Rcpp::List& X_S_list, const Rcpp::List& Y_S_list, const Rcpp::List& C_S_list, const arma::mat& bs_c, const Rcpp::List& id, const arma::vec& sd_T, double lambda_T, const arma::vec& lambda_S, double tau, const arma::vec& tau_S, double sd_y_T, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_target_aft(SEXP bt_cSEXP, SEXP X_TSEXP, SEXP Y_TSEXP, SEXP C_TSEXP, SEXP X_S_listSEXP, SEXP Y_S_listSEXP, SEXP C_S_listSEXP, SEXP bs_cSEXP, SEXP idSEXP, SEXP sd_TSEXP, SEXP lambda_TSEXP, SEXP lambda_SSEXP, SEXP tauSEXP, SEXP tau_SSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resid_S_list, const arma::mat& X_T, const arma::vec& C_T, const Rcpp::List& X_S_list, const Rcpp::List& C_S_list, const Rcpp::List& id, const arma::vec& sd_T, double lambda_T, double tau, double sd_y_T, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_target_aft(SEXP bt_cSEXP, SEXP resid_TSEXP, SEXP resid_S_listSEXP, SEXP X_TSEXP, SEXP C_TSEXP, SEXP X_S_listSEXP, SEXP C_S_listSEXP, SEXP idSEXP, SEXP sd_TSEXP, SEXP lambda_TSEXP, SEXP tauSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid_T(resid_TSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y_T(Y_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C_T(C_TSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type X_S_list(X_S_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_S_list(Y_S_listSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type C_S_list(C_S_listSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type id(idSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_T(sd_TSEXP);
     Rcpp::traits::input_parameter< double >::type lambda_T(lambda_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
     Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
     Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
     Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
@@ -126,21 +35,20 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
     Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_target_aft(bt_c, X_T, Y_T, C_T, X_S_list, Y_S_list, C_S_list, bs_c, id, sd_T, lambda_T, lambda_S, tau, tau_S, sd_y_T, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_target_aft(bt_c, resid_T, resid_S_list, X_T, C_T, X_S_list, C_S_list, id, sd_T, lambda_T, tau, sd_y_T, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_source_joint_aft
-List update_source_joint_aft(arma::mat bs_c, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list, const arma::vec& beta_T, const arma::vec& lambda_S, const arma::vec& tau_S, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_source_joint_aft(SEXP bs_cSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP C_s_listSEXP, SEXP beta_TSEXP, SEXP lambda_SSEXP, SEXP tau_SSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+List update_source_joint_aft(arma::mat bs_c, const Rcpp::List& resid_S_list, const Rcpp::List& X_s_list, const Rcpp::List& C_s_list, const arma::vec& lambda_S, const arma::vec& tau_S, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_source_joint_aft(SEXP bs_cSEXP, SEXP resid_S_listSEXP, SEXP X_s_listSEXP, SEXP C_s_listSEXP, SEXP lambda_SSEXP, SEXP tau_SSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::mat >::type bs_c(bs_cSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta_T(beta_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
@@ -149,136 +57,185 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
     Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_source_joint_aft(bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_source_joint_aft(bs_c, resid_S_list, X_s_list, C_s_list, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_target_scale_aft
-double update_target_scale_aft(double xi_t_curr, const double sd_0, arma::vec bt_c, const arma::mat& bs_c, const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list, double lambda_T, const arma::vec& lambda_S, double sd_y_T, const arma::vec& sd_y_S, const arma::vec& tau_S, int fam_code, int slab_code, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_target_scale_aft(SEXP xi_t_currSEXP, SEXP sd_0SEXP, SEXP bt_cSEXP, SEXP bs_cSEXP, SEXP X_TSEXP, SEXP Y_TSEXP, SEXP C_TSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP C_s_listSEXP, SEXP lambda_TSEXP, SEXP lambda_SSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP tau_SSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+List update_target_scale_aft(double xi_t_curr, const double sd_0, const arma::vec& Y_T, arma::vec resid_T, const Rcpp::List& Y_s_list, const Rcpp::List& resid_S_list, arma::vec bt_c, const arma::mat& X_T, const arma::vec& C_T, double lambda_T, const Rcpp::List& X_s_list, const Rcpp::List& C_s_list, double sd_y_T, const arma::vec& sd_y_S, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_target_scale_aft(SEXP xi_t_currSEXP, SEXP sd_0SEXP, SEXP Y_TSEXP, SEXP resid_TSEXP, SEXP Y_s_listSEXP, SEXP resid_S_listSEXP, SEXP bt_cSEXP, SEXP X_TSEXP, SEXP C_TSEXP, SEXP lambda_TSEXP, SEXP X_s_listSEXP, SEXP C_s_listSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type xi_t_curr(xi_t_currSEXP);
     Rcpp::traits::input_parameter< const double >::type sd_0(sd_0SEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Y_T(Y_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type C_T(C_TSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid_T(resid_TSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type C_T(C_TSEXP);
     Rcpp::traits::input_parameter< double >::type lambda_T(lambda_TSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
     Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
     Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_target_scale_aft(xi_t_curr, sd_0, bt_c, bs_c, X_T, Y_T, C_T, X_s_list, Y_s_list, C_s_list, lambda_T, lambda_S, sd_y_T, sd_y_S, tau_S, fam_code, slab_code, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_target_scale_aft(xi_t_curr, sd_0, Y_T, resid_T, Y_s_list, resid_S_list, bt_c, X_T, C_T, lambda_T, X_s_list, C_s_list, sd_y_T, sd_y_S, fam_code, slab_code, approx, k_apx));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_source_scales_aft
-arma::vec update_source_scales_aft(arma::vec xi_s_curr, const double sd_0, const arma::mat& bs_c, const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list, const arma::vec& beta_T, const arma::vec& lambda_S, const arma::vec& sd_y_S, int fam_code, int slab_code, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_source_scales_aft(SEXP xi_s_currSEXP, SEXP sd_0SEXP, SEXP bs_cSEXP, SEXP X_s_listSEXP, SEXP Y_s_listSEXP, SEXP C_s_listSEXP, SEXP beta_TSEXP, SEXP lambda_SSEXP, SEXP sd_y_SSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+List update_source_scales_aft(arma::vec xi_s_curr, const double sd_0, const Rcpp::List& Y_s_list, const Rcpp::List& resid_S_list, const arma::mat& bs_c, const Rcpp::List& X_s_list, const Rcpp::List& C_s_list, const arma::vec& lambda_S, const arma::vec& sd_y_S, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_source_scales_aft(SEXP xi_s_currSEXP, SEXP sd_0SEXP, SEXP Y_s_listSEXP, SEXP resid_S_listSEXP, SEXP bs_cSEXP, SEXP X_s_listSEXP, SEXP C_s_listSEXP, SEXP lambda_SSEXP, SEXP sd_y_SSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type xi_s_curr(xi_s_currSEXP);
     Rcpp::traits::input_parameter< const double >::type sd_0(sd_0SEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type bs_c(bs_cSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
-    Rcpp::traits::input_parameter< const Rcpp::List& >::type Y_s_list(Y_s_listSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta_T(beta_TSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
     Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_source_scales_aft(xi_s_curr, sd_0, bs_c, X_s_list, Y_s_list, C_s_list, beta_T, lambda_S, sd_y_S, fam_code, slab_code, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_source_scales_aft(xi_s_curr, sd_0, Y_s_list, resid_S_list, bs_c, X_s_list, C_s_list, lambda_S, sd_y_S, fam_code, slab_code, approx, k_apx));
+    return rcpp_result_gen;
+END_RCPP
+}
+// update_target_intercept_tl_aft
+List update_target_intercept_tl_aft(double b0_T_curr, arma::vec resid_T, const arma::vec& C_T, double sd_y_T, int fam_code, double sd_prior);
+RcppExport SEXP _NTL_update_target_intercept_tl_aft(SEXP b0_T_currSEXP, SEXP resid_TSEXP, SEXP C_TSEXP, SEXP sd_y_TSEXP, SEXP fam_codeSEXP, SEXP sd_priorSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type b0_T_curr(b0_T_currSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid_T(resid_TSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type C_T(C_TSEXP);
+    Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
+    Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
+    Rcpp::traits::input_parameter< double >::type sd_prior(sd_priorSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_target_intercept_tl_aft(b0_T_curr, resid_T, C_T, sd_y_T, fam_code, sd_prior));
+    return rcpp_result_gen;
+END_RCPP
+}
+// update_source_intercepts_tl_aft
+List update_source_intercepts_tl_aft(arma::vec b0_s_curr, const Rcpp::List& resid_S_list, const Rcpp::List& C_s_list, const arma::vec& sd_y_S, int fam_code, double sd_prior);
+RcppExport SEXP _NTL_update_source_intercepts_tl_aft(SEXP b0_s_currSEXP, SEXP resid_S_listSEXP, SEXP C_s_listSEXP, SEXP sd_y_SSEXP, SEXP fam_codeSEXP, SEXP sd_priorSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::vec >::type b0_s_curr(b0_s_currSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
+    Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
+    Rcpp::traits::input_parameter< double >::type sd_prior(sd_priorSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_source_intercepts_tl_aft(b0_s_curr, resid_S_list, C_s_list, sd_y_S, fam_code, sd_prior));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_sigma_target_tl_aft
-double update_sigma_target_tl_aft(arma::vec bt_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C, double current_sigma, double lambda, double tau, int fam_code, int slab_code, double step_size, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_sigma_target_tl_aft(SEXP bt_cSEXP, SEXP XSEXP, SEXP YSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP step_sizeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+double update_sigma_target_tl_aft(const arma::vec& resid, const arma::vec& C, double current_sigma, int fam_code, double step_size);
+RcppExport SEXP _NTL_update_sigma_target_tl_aft(SEXP residSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP fam_codeSEXP, SEXP step_sizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type resid(residSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
     Rcpp::traits::input_parameter< double >::type current_sigma(current_sigmaSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< double >::type step_size(step_sizeSEXP);
-    Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
-    Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_sigma_target_tl_aft(bt_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_sigma_target_tl_aft(resid, C, current_sigma, fam_code, step_size));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_sigma_source_tl_aft
-double update_sigma_source_tl_aft(arma::vec bs_col, const arma::vec& beta_T, const arma::mat& X, const arma::vec& Y, const arma::vec& C, double current_sigma, double lambda, double tau, int fam_code, int slab_code, double step_size, bool approx, double k_apx);
-RcppExport SEXP _NTL_update_sigma_source_tl_aft(SEXP bs_colSEXP, SEXP beta_TSEXP, SEXP XSEXP, SEXP YSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP step_sizeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+double update_sigma_source_tl_aft(const arma::vec& resid, const arma::vec& C, double current_sigma, int fam_code, double step_size);
+RcppExport SEXP _NTL_update_sigma_source_tl_aft(SEXP residSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP fam_codeSEXP, SEXP step_sizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type bs_col(bs_colSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type beta_T(beta_TSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type resid(residSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
     Rcpp::traits::input_parameter< double >::type current_sigma(current_sigmaSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< double >::type step_size(step_sizeSEXP);
-    Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
-    Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_sigma_source_tl_aft(bs_col, beta_T, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size, approx, k_apx));
+    rcpp_result_gen = Rcpp::wrap(update_sigma_source_tl_aft(resid, C, current_sigma, fam_code, step_size));
     return rcpp_result_gen;
 END_RCPP
 }
-// update_blocks_cpp
-List update_blocks_cpp(arma::vec b_c, const arma::mat& X, const arma::vec& Y, const Rcpp::List& id, const arma::vec& sd_0, double lambda, double tau, double sd_y, int S_max, int slab_code);
-RcppExport SEXP _NTL_update_blocks_cpp(SEXP b_cSEXP, SEXP XSEXP, SEXP YSEXP, SEXP idSEXP, SEXP sd_0SEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP sd_ySEXP, SEXP S_maxSEXP, SEXP slab_codeSEXP) {
+// update_target_group_aft
+List update_target_group_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resid_S_list, const arma::mat& X_T, const arma::vec& C_T, const Rcpp::List& X_S_list, const Rcpp::List& C_S_list, const Rcpp::List& id, const Rcpp::IntegerVector& group_map, const arma::vec& sd_T, double lambda_T, double tau, double sd_y_T, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_target_group_aft(SEXP bt_cSEXP, SEXP resid_TSEXP, SEXP resid_S_listSEXP, SEXP X_TSEXP, SEXP C_TSEXP, SEXP X_S_listSEXP, SEXP C_S_listSEXP, SEXP idSEXP, SEXP group_mapSEXP, SEXP sd_TSEXP, SEXP lambda_TSEXP, SEXP tauSEXP, SEXP sd_y_TSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type b_c(b_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type bt_c(bt_cSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid_T(resid_TSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
+    Rcpp::traits::input_parameter< const arma::mat& >::type X_T(X_TSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type C_T(C_TSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_S_list(X_S_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type C_S_list(C_S_listSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type id(idSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type sd_0(sd_0SEXP);
-    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type group_map(group_mapSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type sd_T(sd_TSEXP);
+    Rcpp::traits::input_parameter< double >::type lambda_T(lambda_TSEXP);
     Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
-    Rcpp::traits::input_parameter< double >::type sd_y(sd_ySEXP);
+    Rcpp::traits::input_parameter< double >::type sd_y_T(sd_y_TSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
     Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
+    Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_blocks_cpp(b_c, X, Y, id, sd_0, lambda, tau, sd_y, S_max, slab_code));
+    Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
+    Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_target_group_aft(bt_c, resid_T, resid_S_list, X_T, C_T, X_S_list, C_S_list, id, group_map, sd_T, lambda_T, tau, sd_y_T, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
+    return rcpp_result_gen;
+END_RCPP
+}
+// update_source_joint_group_aft
+List update_source_joint_group_aft(arma::mat bs_c, const Rcpp::List& resid_S_list, const Rcpp::List& X_s_list, const Rcpp::List& C_s_list, const Rcpp::List& id, const Rcpp::IntegerVector& group_map, const arma::vec& lambda_S, const arma::vec& tau_S, const arma::vec& sd_y_S, int S_max, int fam_code, int slab_code, bool approx, double k_apx);
+RcppExport SEXP _NTL_update_source_joint_group_aft(SEXP bs_cSEXP, SEXP resid_S_listSEXP, SEXP X_s_listSEXP, SEXP C_s_listSEXP, SEXP idSEXP, SEXP group_mapSEXP, SEXP lambda_SSEXP, SEXP tau_SSEXP, SEXP sd_y_SSEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP approxSEXP, SEXP k_apxSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< arma::mat >::type bs_c(bs_cSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type resid_S_list(resid_S_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type X_s_list(X_s_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type C_s_list(C_s_listSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::List& >::type id(idSEXP);
+    Rcpp::traits::input_parameter< const Rcpp::IntegerVector& >::type group_map(group_mapSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type lambda_S(lambda_SSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type tau_S(tau_SSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type sd_y_S(sd_y_SSEXP);
+    Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
+    Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
+    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
+    Rcpp::traits::input_parameter< bool >::type approx(approxSEXP);
+    Rcpp::traits::input_parameter< double >::type k_apx(k_apxSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_source_joint_group_aft(bs_c, resid_S_list, X_s_list, C_s_list, id, group_map, lambda_S, tau_S, sd_y_S, S_max, fam_code, slab_code, approx, k_apx));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_blocks_aft
-List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C, const Rcpp::List& id, const arma::vec& sd_0, double lambda, double tau, double sd_y, int S_max, int fam_code, int slab_code);
-RcppExport SEXP _NTL_update_blocks_aft(SEXP b_cSEXP, SEXP XSEXP, SEXP YSEXP, SEXP CSEXP, SEXP idSEXP, SEXP sd_0SEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP sd_ySEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP) {
+List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const arma::vec& C, const Rcpp::List& id, const arma::vec& sd_0, double lambda, double tau, double sd_y, int S_max, int fam_code, int slab_code);
+RcppExport SEXP _NTL_update_blocks_aft(SEXP b_cSEXP, SEXP residSEXP, SEXP XSEXP, SEXP CSEXP, SEXP idSEXP, SEXP sd_0SEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP sd_ySEXP, SEXP S_maxSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< arma::vec >::type b_c(b_cSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid(residSEXP);
     Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
     Rcpp::traits::input_parameter< const Rcpp::List& >::type id(idSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type sd_0(sd_0SEXP);
@@ -288,66 +245,74 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< int >::type S_max(S_maxSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
     Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_blocks_aft(b_c, X, Y, C, id, sd_0, lambda, tau, sd_y, S_max, fam_code, slab_code));
+    rcpp_result_gen = Rcpp::wrap(update_blocks_aft(b_c, resid, X, C, id, sd_0, lambda, tau, sd_y, S_max, fam_code, slab_code));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_sigma_to_aft
-double update_sigma_to_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C, double current_sigma, double lambda, double tau, int fam_code, int slab_code, double step_size);
-RcppExport SEXP _NTL_update_sigma_to_aft(SEXP b_cSEXP, SEXP XSEXP, SEXP YSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP lambdaSEXP, SEXP tauSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP, SEXP step_sizeSEXP) {
+double update_sigma_to_aft(const arma::vec& resid, const arma::vec& C, double current_sigma, int fam_code, double step_size);
+RcppExport SEXP _NTL_update_sigma_to_aft(SEXP residSEXP, SEXP CSEXP, SEXP current_sigmaSEXP, SEXP fam_codeSEXP, SEXP step_sizeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
-    Rcpp::traits::input_parameter< arma::vec >::type b_c(b_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
-    Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type resid(residSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
     Rcpp::traits::input_parameter< double >::type current_sigma(current_sigmaSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
-    Rcpp::traits::input_parameter< double >::type tau(tauSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
     Rcpp::traits::input_parameter< double >::type step_size(step_sizeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_sigma_to_aft(b_c, X, Y, C, current_sigma, lambda, tau, fam_code, slab_code, step_size));
+    rcpp_result_gen = Rcpp::wrap(update_sigma_to_aft(resid, C, current_sigma, fam_code, step_size));
     return rcpp_result_gen;
 END_RCPP
 }
 // update_scale_aft
-double update_scale_aft(double xi_curr, arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C, double lambda, double sd_y, double sd_prior, int fam_code, int slab_code);
-RcppExport SEXP _NTL_update_scale_aft(SEXP xi_currSEXP, SEXP b_cSEXP, SEXP XSEXP, SEXP YSEXP, SEXP CSEXP, SEXP lambdaSEXP, SEXP sd_ySEXP, SEXP sd_priorSEXP, SEXP fam_codeSEXP, SEXP slab_codeSEXP) {
+List update_scale_aft(double xi_curr, const arma::vec& Y, arma::vec resid, const arma::vec& C, double sd_y, double sd_prior, int fam_code);
+RcppExport SEXP _NTL_update_scale_aft(SEXP xi_currSEXP, SEXP YSEXP, SEXP residSEXP, SEXP CSEXP, SEXP sd_ySEXP, SEXP sd_priorSEXP, SEXP fam_codeSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
     Rcpp::traits::input_parameter< double >::type xi_curr(xi_currSEXP);
-    Rcpp::traits::input_parameter< arma::vec >::type b_c(b_cSEXP);
-    Rcpp::traits::input_parameter< const arma::mat& >::type X(XSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type Y(YSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid(residSEXP);
     Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
-    Rcpp::traits::input_parameter< double >::type lambda(lambdaSEXP);
     Rcpp::traits::input_parameter< double >::type sd_y(sd_ySEXP);
     Rcpp::traits::input_parameter< double >::type sd_prior(sd_priorSEXP);
     Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
-    Rcpp::traits::input_parameter< int >::type slab_code(slab_codeSEXP);
-    rcpp_result_gen = Rcpp::wrap(update_scale_aft(xi_curr, b_c, X, Y, C, lambda, sd_y, sd_prior, fam_code, slab_code));
+    rcpp_result_gen = Rcpp::wrap(update_scale_aft(xi_curr, Y, resid, C, sd_y, sd_prior, fam_code));
+    return rcpp_result_gen;
+END_RCPP
+}
+// update_intercept_to_aft
+List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& C, double sd_y, int fam_code, double sd_prior);
+RcppExport SEXP _NTL_update_intercept_to_aft(SEXP b0_currSEXP, SEXP residSEXP, SEXP CSEXP, SEXP sd_ySEXP, SEXP fam_codeSEXP, SEXP sd_priorSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< double >::type b0_curr(b0_currSEXP);
+    Rcpp::traits::input_parameter< arma::vec >::type resid(residSEXP);
+    Rcpp::traits::input_parameter< const arma::vec& >::type C(CSEXP);
+    Rcpp::traits::input_parameter< double >::type sd_y(sd_ySEXP);
+    Rcpp::traits::input_parameter< int >::type fam_code(fam_codeSEXP);
+    Rcpp::traits::input_parameter< double >::type sd_prior(sd_priorSEXP);
+    rcpp_result_gen = Rcpp::wrap(update_intercept_to_aft(b0_curr, resid, C, sd_y, fam_code, sd_prior));
     return rcpp_result_gen;
 END_RCPP
 }
 
 static const R_CallMethodDef CallEntries[] = {
-    {"_NTL_update_target_cpp", (DL_FUNC) &_NTL_update_target_cpp, 16},
-    {"_NTL_update_source_joint_cpp", (DL_FUNC) &_NTL_update_source_joint_cpp, 9},
-    {"_NTL_update_target_scale_cpp", (DL_FUNC) &_NTL_update_target_scale_cpp, 14},
-    {"_NTL_update_source_scales_cpp", (DL_FUNC) &_NTL_update_source_scales_cpp, 9},
-    {"_NTL_update_target_aft", (DL_FUNC) &_NTL_update_target_aft, 21},
-    {"_NTL_update_source_joint_aft", (DL_FUNC) &_NTL_update_source_joint_aft, 13},
-    {"_NTL_update_target_scale_aft", (DL_FUNC) &_NTL_update_target_scale_aft, 19},
+    {"_NTL_update_target_aft", (DL_FUNC) &_NTL_update_target_aft, 18},
+    {"_NTL_update_source_joint_aft", (DL_FUNC) &_NTL_update_source_joint_aft, 12},
+    {"_NTL_update_target_scale_aft", (DL_FUNC) &_NTL_update_target_scale_aft, 18},
     {"_NTL_update_source_scales_aft", (DL_FUNC) &_NTL_update_source_scales_aft, 13},
-    {"_NTL_update_sigma_target_tl_aft", (DL_FUNC) &_NTL_update_sigma_target_tl_aft, 12},
-    {"_NTL_update_sigma_source_tl_aft", (DL_FUNC) &_NTL_update_sigma_source_tl_aft, 13},
-    {"_NTL_update_blocks_cpp", (DL_FUNC) &_NTL_update_blocks_cpp, 10},
+    {"_NTL_update_target_intercept_tl_aft", (DL_FUNC) &_NTL_update_target_intercept_tl_aft, 6},
+    {"_NTL_update_source_intercepts_tl_aft", (DL_FUNC) &_NTL_update_source_intercepts_tl_aft, 6},
+    {"_NTL_update_sigma_target_tl_aft", (DL_FUNC) &_NTL_update_sigma_target_tl_aft, 5},
+    {"_NTL_update_sigma_source_tl_aft", (DL_FUNC) &_NTL_update_sigma_source_tl_aft, 5},
+    {"_NTL_update_target_group_aft", (DL_FUNC) &_NTL_update_target_group_aft, 19},
+    {"_NTL_update_source_joint_group_aft", (DL_FUNC) &_NTL_update_source_joint_group_aft, 14},
     {"_NTL_update_blocks_aft", (DL_FUNC) &_NTL_update_blocks_aft, 12},
-    {"_NTL_update_sigma_to_aft", (DL_FUNC) &_NTL_update_sigma_to_aft, 10},
-    {"_NTL_update_scale_aft", (DL_FUNC) &_NTL_update_scale_aft, 10},
+    {"_NTL_update_sigma_to_aft", (DL_FUNC) &_NTL_update_sigma_to_aft, 5},
+    {"_NTL_update_scale_aft", (DL_FUNC) &_NTL_update_scale_aft, 7},
+    {"_NTL_update_intercept_to_aft", (DL_FUNC) &_NTL_update_intercept_to_aft, 6},
     {NULL, NULL, 0}
 };
 

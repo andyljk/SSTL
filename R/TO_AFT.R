@@ -8,6 +8,8 @@
 #' @param b.c Initial states for latent parameters.
 #' @param xi shadow variable for slab scale parameter.
 #' @param sd_y scale variable for noise.
+#' @param b0 Initial value for the intercept term, default is 0.
+#' @param intercept Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.
 #' @param lambda Threshold parameter.
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
@@ -21,6 +23,7 @@
 ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
                           sd.0=NULL, lambda=NULL,
                           xi=NULL, sd_y=NULL,
+                          b0=NULL, intercept=TRUE,
                           N=5000, S.max=100, block_size=1,
                           family="Weibull", slab = "exp",
                           verbose=1, debug=F) {
@@ -64,11 +67,28 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   MC.beta = matrix(NA, N, p)
   if (is.null(sd_y)) sd_y = 1
   if (is.null(xi)) xi = 1
+  if (is.null(b0)) b0 = 0
+  if (intercept) MC.b0 = rep(NA, N)
+
+  resid <- as.numeric(Y - b0 - X %*% calc_beta(b.c, lambda, exp(xi), p, slab_code))
+
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
   for(i in 1:N){                         #  loop over iteration
+    if (intercept) {
+      int_res <- update_intercept_to_aft(b0_curr = b0,
+                                         resid = resid,
+                                         C = C,
+                                         sd_y = sd_y,
+                                         fam_code = fam_code,
+                                         sd_prior = 2.0)
+      b0 <- int_res$b0
+      resid <- int_res$resid
+    }
+
     cpp_res <- update_blocks_aft(b_c = b.c,
-                                 X = X, Y = Y, C = C,
+                                 resid = resid,
+                                 X = X, C = C,
                                  id = id, sd_0 = sd.0,
                                  lambda = lambda, tau = exp(xi),
                                  sd_y = sd_y,
@@ -77,23 +97,22 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
                                  slab_code = slab_code)
 
     b.c <- cpp_res$b_c
+    resid <- cpp_res$resid
     if (debug) N.s[i, ] <- cpp_res$N_s
 
-    xi <- update_scale_aft(xi_curr = xi,
-                           b_c = b.c, X = X, Y = Y, C = C,
-                           lambda = lambda,
-                           sd_y = sd_y,
-                           sd_prior = 2.0, # Prior width for shadow var
-                           fam_code = fam_code,
-                           slab_code = slab_code)
+    scale_res <- update_scale_aft(xi_curr = xi,
+                                  Y = Y - b0, resid = resid, C = C,
+                                  sd_y = sd_y,
+                                  sd_prior = 2.0, # Prior width for shadow var
+                                  fam_code = fam_code)
+    xi <- scale_res$xi
+    resid <- scale_res$resid
 
     # update scale parameter
-    sd_y <- update_sigma_to_aft(b_c = b.c,
-                                X = X, Y = Y, C = C,
+    sd_y <- update_sigma_to_aft(resid = resid,
+                                C = C,
                                 current_sigma = sd_y,
-                                lambda = lambda, tau = exp(xi),
                                 fam_code=fam_code,
-                                slab_code=slab_code,
                                 step_size = 0.1) # Tune step_size for ~30-40% acceptance
 
     if (debug){
@@ -101,14 +120,22 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
       mc.tau[i]   <- exp(xi)
       mc.sigma[i] <- sd_y
     }
+    if (intercept) MC.b0[i] <- b0
     MC.beta[i,] = calc_beta(b.c,lambda,exp(xi),p,slab_code)
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
 
-  if (debug) return(list(mc_b=mc.b, MC_beta = MC.beta, N_s=N.s,
-                         mc_tau = mc.tau, mc_sigma = mc.sigma))
-  else return(list(MC_beta = MC.beta))
+  if (debug) {
+    out <- list(mc_b=mc.b, MC_beta = MC.beta, N_s=N.s,
+                mc_tau = mc.tau, mc_sigma = mc.sigma)
+    if (intercept) out$mc_b0 <- MC.b0
+    return(out)
+  } else {
+    out <- list(MC_beta = MC.beta)
+    if (intercept) out$MC_b0 <- MC.b0
+    return(out)
+  }
 
 
 }
@@ -133,12 +160,13 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
                         lr = 0.1,
                         K_block = 10,
                         schedule = 0.5, family = 'Weibull', slab = "exp",
+                        b0=NULL, intercept=FALSE,
                         optimizer = c("legacy", "adagrad"),
                         adagrad_eps = 1e-8,
                         max_log_step = 0.35,
                         lambda_min = 1e-6,
                         lambda_max = 1e4,
-                        polyak_start = 0.5,
+                        polyak_start = 0.9,
                         verbose=1) {
 
   optimizer = match.arg(optimizer)
@@ -151,6 +179,7 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
   # burn in
   res = ESS_Gibbs_AFT(X=X, Y=Y, C=C,
                       lambda=lambda_init,
+                      b0=b0, intercept=intercept,
                       N=burn, S.max=S.max,
                       block_size=block_size,
                       family=family, slab=slab,
@@ -160,6 +189,8 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
   b.c = res$mc_b[burn,]
   xi = log(res$mc_tau[burn])
   sd_y = res$mc_sigma[burn]
+  if (intercept) b0 = res$mc_b0[burn]
+  else b0 = 0
 
   # storages
   mc.lam = rep(NA,n_blocks); lambda=lambda_init
@@ -177,6 +208,7 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
     res <- ESS_Gibbs_AFT(X=X, Y=Y, C=C,
                          b.c=b.c, lambda=lambda,
                          xi=xi, sd_y=sd_y,
+                         b0=b0, intercept=intercept,
                          N=K_block, S.max=S.max,
                          block_size=block_size,
                          family=family, slab=slab,
@@ -185,6 +217,7 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
     b.c  <- res$mc_b[K_block, ]
     xi    <- log(res$mc_tau[K_block])
     sd_y <- res$mc_sigma[K_block]
+    if (intercept) b0 <- res$mc_b0[K_block]
 
     # SAEM update
     logPhi_z   <- mean(pnorm(res$mc_b[,2*p+1],log.p=T))                # log Phi(Z)
@@ -222,6 +255,8 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
     lambda_final <- lambda
   }
 
-  list(mc.lam    = mc.lam,
-       lambda_final = lambda)
+  out <- list(mc.lam = mc.lam,
+              lambda_final = lambda)
+  if (intercept) out$b0_final <- b0
+  out
 }

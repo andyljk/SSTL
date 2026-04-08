@@ -19,12 +19,14 @@ EB_SAEM_AFT(
   schedule = 0.5,
   family = "Weibull",
   slab = "exp",
+  b0 = NULL,
+  intercept = FALSE,
   optimizer = c("legacy", "adagrad"),
   adagrad_eps = 1e-08,
   max_log_step = 0.35,
   lambda_min = 1e-06,
   lambda_max = 10000,
-  polyak_start = 0.5,
+  polyak_start = 0.9,
   verbose = 1
 )
 }
@@ -52,6 +54,10 @@ EB_SAEM_AFT(
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
 
 \item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
+
+\item{b0}{Initial value for the intercept term, default is 0.}
+
+\item{intercept}{Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.}
 
 \item{optimizer}{"legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.}
 

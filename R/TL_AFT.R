@@ -11,6 +11,8 @@
 #' @param bt.c,bs.c Initial states for target and source parameters.
 #' @param lambda_T,lambda_s Threshold parameters.
 #' @param xi,xi_s Initial states of shadow variables for the slab scale parameter.
+#' @param b0_T,b0_s Initial value for the intercept term, default is 0.
+#' @param intercept Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
@@ -27,8 +29,9 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                              lambda_T=NULL, lambda_s=NULL,
                              xi=NULL, xi_s=NULL, xi_prior=1,
                              sig_T = NULL, sig_s = NULL,
+                             b0_T = NULL, b0_s = NULL, intercept = TRUE,
                              N=5000, S.max=500, block_size=1,
-                             family="Weibull", slab = "poly",
+                             family="Weibull", slab = "exp",
                              verbose=1, debug=F) {
 
   fam_map <- c("weibull" = 1, "loglogistic" = 2, "lognormal" = 3)
@@ -71,10 +74,29 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     mc.tau_T = rep(NA,N)
     mc.tau_S = array(NA,dim=c(N,S))
   }
-  if (is.null(xi)) xi = 0
-  if (is.null(xi_s)) xi_s = rep(0,S)
+  if (intercept) {
+    MC.b0_T <- rep(NA_real_, N)
+    MC.b0_S <- array(NA_real_, dim = c(N, S))
+  }
+  if (is.null(xi)) xi = 0.5
+  if (is.null(xi_s)) xi_s = rep(0.5,S)
   if (is.null(sig_T)) sig_T = 1
   if (is.null(sig_s)) sig_s = rep(1,S) # initialize scale parameters
+  if (is.null(b0_T)) b0_T = 0
+  if (is.null(b0_s)) b0_s = rep(0, S)
+
+  beta_T_init <- calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
+  resid_T <- as.numeric(Y_T - b0_T - X_T %*% beta_T_init)
+  if (S > 0) {
+    bias_s_init <- lapply(seq_len(S), function(s) {
+      calc_beta(bs.c[, s], lambda_s[s], abs(xi_s[s]), p, slab_code)
+    })
+    resid_S <- lapply(seq_len(S), function(s) {
+      as.numeric(Y_s[[s]] - b0_s[s] - X_s[[s]] %*% (beta_T_init + bias_s_init[[s]]))
+    })
+  } else {
+    resid_S <- list()
+  }
 
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
@@ -82,39 +104,68 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     # ---------------------------------------------------------
     # STEP A: Update Target (Always Runs)
     # ---------------------------------------------------------
+    if (intercept) {
+      int_res_T <- update_target_intercept_tl_aft(b0_T_curr = b0_T,
+                                                  resid_T = resid_T, C_T = C_T,
+                                                  sd_y_T = sig_T,
+                                                  fam_code = fam_code,
+                                                  sd_prior = 2.0)
+      b0_T <- int_res_T$b0_T
+      resid_T <- int_res_T$resid_T
+    }
+
     # Note: C++ function naturally handles S=0 (loops over sources won't run)
     cpp_res_T <- update_target_aft(bt_c = bt.c,
-                                   X_T = X_T, Y_T = Y_T, C_T = C_T,
-                                   X_S_list = X_s, Y_S_list = Y_s, C_S_list = C_s,
-                                   bs_c = bs.c,
+                                   resid_T = resid_T, resid_S_list = resid_S,
+                                   X_T = X_T, C_T = C_T,
+                                   X_S_list = X_s, C_S_list = C_s,
                                    id = id, sd_T = sd_T,
-                                   lambda_T = lambda_T, lambda_S = lambda_s,
-                                   tau = abs(xi), tau_S = abs(xi_s),
+                                   lambda_T = lambda_T,
+                                   tau = abs(xi),
                                    sd_y_T = sig_T, sd_y_S = sig_s,
                                    S_max = S.max, fam_code=fam_code, slab_code=slab_code)
     bt.c <- cpp_res_T$bt_c
+    resid_T <- cpp_res_T$resid_T
+    resid_S <- cpp_res_T$resid_S
 
     # Update Target Scale
-    xi <- update_target_scale_aft(xi_t_curr = xi,
-                                  sd_0 = xi_prior,
-                                  bt_c = bt.c,
-                                  bs_c = bs.c,
-                                  X_T = X_T, Y_T = Y_T, C_T = C_T,
-                                  X_s_list = X_s, Y_s_list = Y_s, C_s_list = C_s,
-                                  lambda_T = lambda_T, lambda_S = lambda_s,
-                                  sd_y_T = sig_T, sd_y_S = sig_s,
-                                  tau_S = abs(xi_s),
-                                  fam_code=fam_code, slab_code = slab_code)
+    Y_T_scale <- Y_T - b0_T
+    if (S > 0) {
+      bias_s_curr <- lapply(seq_len(S), function(s) {
+        calc_beta(bs.c[, s], lambda_s[s], abs(xi_s[s]), p, slab_code)
+      })
+      Y_s_target_scale <- lapply(seq_len(S), function(s) {
+        as.numeric(Y_s[[s]] - b0_s[s] - X_s[[s]] %*% bias_s_curr[[s]])
+      })
+    } else {
+      Y_s_target_scale <- list()
+    }
+    scale_res_T <- update_target_scale_aft(xi_t_curr = xi,
+                                           sd_0 = xi_prior,
+                                           Y_T = Y_T_scale,
+                                           resid_T = resid_T,
+                                           Y_s_list = Y_s_target_scale,
+                                           resid_S_list = resid_S,
+                                           bt_c = bt.c,
+                                           X_T = X_T, C_T = C_T,
+                                           lambda_T = lambda_T,
+                                           X_s_list = X_s, C_s_list = C_s,
+                                           sd_y_T = sig_T, sd_y_S = sig_s,
+                                           fam_code=fam_code, slab_code = slab_code)
+    xi <- scale_res_T$xi_t
+    resid_T <- scale_res_T$resid_T
+    resid_S <- scale_res_T$resid_S
     tau <- abs(xi)
+    beta_T_curr <- calc_beta(bt.c, lambda_T, tau, p, slab_code)
 
     # update prior variance of w in target
     # tau2_w = 1/rgamma(1, shape = 3 + p/2, 2 + sum(bt.c[1:p]^2)/2)
     # sd_T[1:p] = tau2_w^0.5; mc.tau2_wT[i] = tau2_w
 
     # update scale parameter for target
-    sig_T = update_sigma_target_tl_aft(bt.c, X_T, Y_T, C_T,
-                                       sig_T, lambda_T, abs(xi),
-                                       fam_code=fam_code, slab_code=slab_code, step_size=0.1)
+    sig_T = update_sigma_target_tl_aft(resid = resid_T, C = C_T,
+                                       current_sigma = sig_T,
+                                       fam_code=fam_code, step_size=0.1)
 
     if (debug){
       mc.bt[i, ] <- bt.c
@@ -129,36 +180,48 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     # STEP B: Update Sources (Run ONLY if S > 0)
     # ---------------------------------------------------------
     if (S > 0){
-      beta_Tc = calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
+      if (intercept) {
+        int_res_S <- update_source_intercepts_tl_aft(b0_s_curr = b0_s,
+                                                     resid_S_list = resid_S, C_s_list = C_s,
+                                                     sd_y_S = sig_s,
+                                                     fam_code = fam_code,
+                                                     sd_prior = 2.0)
+        b0_s <- int_res_S$b0_s
+        resid_S <- int_res_S$resid_S
+      }
 
       cpp_res_S <- update_source_joint_aft(bs_c = bs.c,
-                                           X_s_list = X_s, Y_s_list = Y_s, C_s_list = C_s,
-                                           beta_T = beta_Tc,
+                                           resid_S_list = resid_S,
+                                           X_s_list = X_s, C_s_list = C_s,
                                            lambda_S = lambda_s, tau_S = abs(xi_s),
                                            sd_y_S = sig_s,
                                            S_max = S.max,
                                            fam_code=fam_code, slab_code=slab_code)
       bs.c <- cpp_res_S$bs_c
+      resid_S <- cpp_res_S$resid_S
 
       # Update Source Scales (Jointly with Independent Prior)
-      xi_s <- update_source_scales_aft(xi_s_curr = xi_s,
-                                       sd_0 = 0.2,
-                                       bs_c = bs.c,
-                                       X_s_list = X_s, Y_s_list = Y_s, C_s_list = C_s,
-                                       beta_T = beta_Tc,
-                                       lambda_S = lambda_s,
-                                       sd_y_S = sig_s,
-                                       fam_code = fam_code, slab_code = slab_code)
+      Y_s_source_scale <- lapply(seq_len(S), function(s) {
+        as.numeric(Y_s[[s]] - b0_s[s] - X_s[[s]] %*% beta_T_curr)
+      })
+      scale_res_S <- update_source_scales_aft(xi_s_curr = xi_s,
+                                              sd_0 = 0.2,
+                                              Y_s_list = Y_s_source_scale,
+                                              resid_S_list = resid_S,
+                                              bs_c = bs.c,
+                                              X_s_list = X_s, C_s_list = C_s,
+                                              lambda_S = lambda_s,
+                                              sd_y_S = sig_s,
+                                              fam_code = fam_code, slab_code = slab_code)
+      xi_s <- scale_res_S$xi_s
+      resid_S <- scale_res_S$resid_S
       tau_s <- abs(xi_s)
 
       # update scale parameter for sources
-      beta_Tc_curr <- calc_beta(bt.c, lambda_T, abs(xi), p, slab_code)
       for (s in 1:S){
-        bs_col <- bs.c[, s] # Extract column for source s
-        sig_s[s] <- update_sigma_source_tl_aft(bs_col, beta_Tc_curr,
-                                               X_s[[s]], Y_s[[s]], C_s[[s]],
-                                               sig_s[s], lambda_s[s], abs(xi_s[s]),
-                                               fam_code=fam_code, slab_code=slab_code,
+        sig_s[s] <- update_sigma_source_tl_aft(resid = resid_S[[s]], C = C_s[[s]],
+                                               current_sigma = sig_s[s],
+                                               fam_code=fam_code,
                                                step_size=0.1)
         if (debug) mc.sig_s[s, i] <- sig_s[s]
       }
@@ -168,18 +231,33 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
         N.s[i,] = cpp_res_S$N_s
         mc.tau_S[i, ] <- tau_s
       }
-
-      MC.beta[i,] = beta_Tc_curr
     }
+
+    if (intercept) {
+      MC.b0_T[i] <- b0_T
+      if (S > 0) MC.b0_S[i, ] <- b0_s
+    }
+
+    MC.beta[i,] = beta_T_curr
 
     if (verbose==1) setTxtProgressBar(pb, i)
   }
   if (debug){
-    return(list(mc_bt=mc.bt, mc_bs=mc.bs, MC_beta = MC.beta, n_t=N.t, n_s=N.s,
+    out <- list(mc_bt=mc.bt, mc_bs=mc.bs, MC_beta = MC.beta, n_t=N.t, n_s=N.s,
                 mc_sig_T = mc.sig_T, mc_sig_s = mc.sig_s,
-                mc_tau_T = mc.tau_T, mc_tau_S = mc.tau_S))
+                mc_tau_T = mc.tau_T, mc_tau_S = mc.tau_S)
+    if (intercept) {
+      out$mc_b0_T <- MC.b0_T
+      out$mc_b0_S <- MC.b0_S
+    }
+    return(out)
   }else{
-    return(list(MC_beta = MC.beta))
+    out <- list(MC_beta = MC.beta)
+    if (intercept) {
+      out$MC_b0_T <- MC.b0_T
+      out$MC_b0_S <- MC.b0_S
+    }
+    return(out)
   }
 }
 
@@ -199,6 +277,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
                           bt.c=NULL, bs.c=NULL,
                           lambda_T=NULL, lambda_s=NULL,
                           xi=NULL, xi_s=NULL,
+                          b0_T=NULL, b0_s=NULL, intercept=FALSE,
                           N=5000, burn = 1000,
                           S.max=500, block_size=1,
                           family="Weibull", slab = "poly",
@@ -228,6 +307,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     X_T = X_T, Y_T = Y_T, C_T = C_T,
     X_s = X_s, Y_s = Y_s, C_s = C_s,
     lambda_T = lambda_T, lambda_s = lambda_s,
+    b0_T = b0_T, b0_s = b0_s, intercept = intercept,
     N = burn, S.max = S.max, block_size = block_size,
     family = family, slab = slab,
     verbose = 0, debug = TRUE
@@ -238,6 +318,13 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
   bs.c = matrix(res$mc_bs[,,burn], nrow=2*p+1, ncol=S)
   xi = abs(res$mc_tau_T[burn]); xi_s = abs(res$mc_tau_S[burn,])
   sig_T = res$mc_sig_T[burn]; sig_s = res$mc_sig_s[,burn]
+  if (intercept) {
+    b0_T = res$mc_b0_T[burn]
+    b0_s = if (S > 0) res$mc_b0_S[burn, ] else numeric(0)
+  } else {
+    b0_T = 0
+    b0_s = rep(0, S)
+  }
 
   mc.lam = array(NA, dim=c(n_blocks,S+1))
   colnames(mc.lam) <- c("lambda_T", if (S > 0) paste0("lambda_s", seq_len(S)) else NULL)
@@ -262,16 +349,19 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
                             lambda_T=lambda_T, lambda_s=lambda_s,
                             xi=xi, xi_s=xi_s,
                             sig_T=sig_T, sig_s=sig_s,
+                            b0_T=b0_T, b0_s=b0_s, intercept=intercept,
                             N=K_block, S.max=S.max, block_size=block_size,
                             family=family, slab=slab,
                             verbose=0, debug=TRUE)
     bt.c  <- res$mc_bt[K_block, ]
     xi    <- abs(res$mc_tau_T[K_block])
     sig_T <- res$mc_sig_T[K_block]
+    if (intercept) b0_T <- res$mc_b0_T[K_block]
 
     bs.c  <- matrix(res$mc_bs[,,K_block], nrow=2*p+1, ncol=S)
     xi_s  <- abs(res$mc_tau_S[K_block, ])
     sig_s <- res$mc_sig_s[, K_block]
+    if (intercept && S > 0) b0_s <- res$mc_b0_S[K_block, ]
 
     # SAEM update
     gamma_t <- t_block^(-gamma_power)     # Robbins step size
@@ -311,8 +401,13 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     if (verbose==1) setTxtProgressBar(pb, t_block)
   }
   final_lam <- if (polyak && lam_avg_n > 0) lam_avg else c(lambda_T, lambda_s)
-  return(list(mc.lam = mc.lam, final_lam = final_lam,
+  out <- list(mc.lam = mc.lam, final_lam = final_lam,
               bt_c = bt.c, bs_c = bs.c,
               xi = xi, xi_s = xi_s,
-              sig_T = sig_T, sig_s = sig_s))
+              sig_T = sig_T, sig_s = sig_s)
+  if (intercept) {
+    out$b0_T = b0_T
+    out$b0_s = b0_s
+  }
+  return(out)
 }

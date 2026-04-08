@@ -11,7 +11,7 @@ using namespace arma;
 // --- MAIN FUNCTION ---
 
 // [[Rcpp::export]]
-List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
+List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const arma::vec& C,
                        const Rcpp::List& id, const arma::vec& sd_0,
                        double lambda, double tau, double sd_y, int S_max,
                        int fam_code, int slab_code) {
@@ -24,9 +24,8 @@ List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, co
   vec a = b_c.subvec(p, 2*p-1);
   double a0 = b_c(2*p);
 
-  // Initialize Beta and Residuals ONCE
+  // Reconstruct the current slope effects once; residual is passed in
   vec beta = ntl::get_beta(w, a, tau, a0, lambda, slab_code);
-  vec resid = Y - X * beta;
   double current_ll = ntl::log_lik_aft(resid, C, sd_y, fam_code);
 
   vec N_s = zeros(K);
@@ -118,24 +117,16 @@ List update_blocks_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, co
     N_s(k) = n_s;
   }
 
-  return List::create(Named("b_c") = b_c, Named("N_s") = N_s);
+  return List::create(Named("b_c") = b_c,
+                      Named("resid") = resid,
+                      Named("N_s") = N_s);
 }
 
 
 // [[Rcpp::export]]
-double update_sigma_to_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
-                           double current_sigma, double lambda, double tau,
-                           int fam_code, int slab_code, double step_size=0.1) {
-
-  // Reconstruct Beta & Calculate Residuals
-  int p = X.n_cols;
-  vec w = b_c.subvec(0, p-1);
-  vec a = b_c.subvec(p, 2*p-1);
-  double a0 = b_c(2*p);
-
-  vec beta = ntl::get_beta(w, a, tau, a0, lambda, slab_code);
-  vec resid = Y - X * beta;
-
+double update_sigma_to_aft(const arma::vec& resid, const arma::vec& C,
+                           double current_sigma, int fam_code,
+                           double step_size=0.1) {
   // Metropolis-Hastings Step
   double log_sigma_curr = log(current_sigma);
   double log_sigma_prop = R::rnorm(log_sigma_curr, step_size);
@@ -154,27 +145,16 @@ double update_sigma_to_aft(arma::vec b_c, const arma::mat& X, const arma::vec& Y
 
 
 // [[Rcpp::export]]
-double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
-                        arma::vec b_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
-                        double lambda, double sd_y, double sd_prior = 10.0,
-                        int fam_code = 1, int slab_code = 1) {
+List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
+                      const arma::vec& Y, arma::vec resid, const arma::vec& C,
+                      double sd_y, double sd_prior = 10.0,
+                      int fam_code = 1) {
 
-  // 1. Pre-calculate the Unscaled Linear Predictor (Z)
-  int p = X.n_cols;
-  vec w = b_c.subvec(0, p-1);
-  vec a = b_c.subvec(p, 2*p-1);
-  double a0 = b_c(2*p);
-
-  // Pass 1.0 for tau to get the raw direction
-  vec beta_unscaled = ntl::get_beta(w, a, 1.0, a0, lambda, slab_code);
-  vec Z = X * beta_unscaled;
-
-  // 2. Setup ESS for the Shadow Variable (tau)
+  // 1. Setup ESS for the shadow variable
   double nu = R::rnorm(0, sd_prior);
 
   // Initial Likelihood
   double current_scale = std::exp(xi_curr);
-  vec resid = Y - current_scale * Z;
   double current_ll = ntl::log_lik_aft(resid, C, sd_y, fam_code);
 
   // Threshold
@@ -187,7 +167,7 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
 
   double xi_prop = xi_curr;
 
-  vec resid_prop(Y.n_elem);
+  vec resid_prop(resid.n_elem);
 
   // 3. ESS Loop
   int iter = 0;
@@ -196,11 +176,12 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     xi_prop = xi_curr * cos(theta) + nu * sin(theta);
     double scale_prop = std::exp(xi_prop);
 
-    // Fast Residual Update (Vector Subtraction only)
-    resid_prop = Y - scale_prop * Z;
+    // Since resid = Y - current_scale * Z, we have (Y - resid) = current_scale * Z
+    resid_prop = Y - (Y - resid) * (scale_prop / current_scale);
     double prop_ll = ntl::log_lik_aft(resid_prop, C, sd_y, fam_code);
 
     if(prop_ll > log_y_thresh) {
+      resid = resid_prop;
       break;
     } else {
       iter++;
@@ -215,5 +196,55 @@ double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     }
   }
 
-  return xi_prop; // Return the new shadow variable
+  return List::create(Named("xi") = xi_prop,
+                      Named("resid") = resid);
+}
+
+
+// [[Rcpp::export]]
+List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& C,
+                             double sd_y, int fam_code,
+                             double sd_prior = 10.0) {
+
+  // Current residual is assumed to be Y - b0_curr - X * beta
+  double nu = R::rnorm(0, sd_prior);
+
+  double current_ll = ntl::log_lik_aft(resid, C, sd_y, fam_code);
+
+  double u = R::runif(0, 1);
+  double log_y_thresh = current_ll + log(u);
+
+  double theta = R::runif(0, 2 * M_PI);
+  double theta_min = theta - 2 * M_PI;
+  double theta_max = theta;
+
+  double b0_prop = b0_curr;
+  vec resid_prop(resid.n_elem);
+
+  // 3. ESS Loop
+  int iter = 0;
+  while(true) {
+    b0_prop = b0_curr * cos(theta) + nu * sin(theta);
+
+    // Intercept updates only shift the residual by the proposed intercept change
+    resid_prop = resid - (b0_prop - b0_curr);
+    double prop_ll = ntl::log_lik_aft(resid_prop, C, sd_y, fam_code);
+
+    if(prop_ll > log_y_thresh) {
+      resid = resid_prop;
+      break;
+    } else {
+      iter++;
+      if (iter >= 20) {
+        b0_prop = b0_curr; // Revert to current state (Reject)
+        break;
+      }
+      if(theta < 0) theta_min = theta;
+      else theta_max = theta;
+      theta = R::runif(theta_min, theta_max);
+    }
+  }
+
+  return List::create(Named("b0") = b0_prop,
+                      Named("resid") = resid);
 }

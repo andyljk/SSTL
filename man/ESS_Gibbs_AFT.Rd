@@ -13,6 +13,8 @@ ESS_Gibbs_AFT(
   lambda = NULL,
   xi = NULL,
   sd_y = NULL,
+  b0 = NULL,
+  intercept = TRUE,
   N = 5000,
   S.max = 100,
   block_size = 1,
@@ -36,6 +38,10 @@ ESS_Gibbs_AFT(
 \item{xi}{shadow variable for slab scale parameter.}
 
 \item{sd_y}{scale variable for noise.}
+
+\item{b0}{Initial value for the intercept term, default is 0.}
+
+\item{intercept}{Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.}
 
 \item{N}{Number of MCMC iterations.}
 

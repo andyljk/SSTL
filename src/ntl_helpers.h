@@ -58,12 +58,43 @@ inline arma::vec H_l_cpp(arma::vec w) {
   return w;
 }
 
+inline double threshold_from_a0(double a0, double lambda) {
+  double thresh_prob = std::pow(pnorm_custom(a0), 1.0 / lambda);
+  return qnorm_custom(thresh_prob);
+}
+
+inline double activation_scalar(double a_val, double thresh,
+                                int slab_code,
+                                bool approx = false,
+                                double k_apx = 10.0) {
+  double centered = a_val - thresh;
+  if (slab_code == 1 || slab_code == 2) {
+    return centered > 0.0 ? centered : 0.0;
+  }
+  if (slab_code == 3) {
+    return approx ? 1.0 / (1.0 + std::exp(-k_apx * centered))
+      : (centered > 0.0 ? 1.0 : 0.0);
+  }
+  return centered > 0.0 ? 1.0 : 0.0;
+}
+
+inline arma::vec slab_weight_vec(const arma::vec& w, int slab_code) {
+  if (slab_code == 1) {
+    return H_l_cpp(w);
+  }
+  if (slab_code == 2) {
+    return H_c_cpp(w);
+  }
+  if (slab_code == 3) {
+    return H_n1_cpp(w);
+  }
+  return H_n2_cpp(w);
+}
+
 // 3. Helper: Calculate Beta from latent vectors w, a, a0
 inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
                           double a0, double lambda, int slab_code, bool approx=false, double k_apx=10.0) {
-  // Threshold calculation: qnorm(pnorm(a0)^(1/lambda))
-  double thresh_prob = std::pow(pnorm_custom(a0), 1.0/lambda);
-  double threshold = qnorm_custom(thresh_prob);
+  double threshold = threshold_from_a0(a0, lambda);
 
   // beta = w * T(a - threshold)
   if (slab_code==1){
@@ -76,6 +107,19 @@ inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
   }else {
     return tau * H_n2_cpp(w) % T_n2_cpp(a - threshold);
   }
+}
+
+inline arma::vec get_beta_group(const arma::vec& w, const arma::vec& a_group,
+                                const Rcpp::IntegerVector& group_map,
+                                double tau, double a0, double lambda,
+                                int slab_code, bool approx = false,
+                                double k_apx = 10.0) {
+  int p = w.n_elem;
+  arma::vec a_expanded(p);
+  for (int j = 0; j < p; ++j) {
+    a_expanded(j) = a_group(group_map[j] - 1);
+  }
+  return get_beta(w, a_expanded, tau, a0, lambda, slab_code, approx, k_apx);
 }
 
 // --- Define Scalar Beta Calculation Lambda ---
@@ -148,6 +192,19 @@ inline arma::vec calc_bias_vec(const arma::vec& bs_col, double tau_s, int p,
   arma::vec a = bs_col.subvec(p, 2*p-1);
   double a0 = bs_col(2*p);
   return get_beta(w, a, tau_s, a0, lambda, slab_code, approx, k_apx);
+}
+
+inline arma::vec calc_bias_vec_group(const arma::vec& bs_col, double tau_s,
+                                     const Rcpp::IntegerVector& group_map,
+                                     double lambda, int slab_code,
+                                     bool approx = false,
+                                     double k_apx = 10.0) {
+  int p = group_map.size();
+  int G = Rcpp::max(group_map);
+  arma::vec w = bs_col.subvec(0, p - 1);
+  arma::vec a = bs_col.subvec(p, p + G - 1);
+  double a0 = bs_col(p + G);
+  return get_beta_group(w, a, group_map, tau_s, a0, lambda, slab_code, approx, k_apx);
 }
 
 } // namespace ntl

@@ -13,12 +13,11 @@ using namespace arma;
 // ============================================================================
 
 // [[Rcpp::export]]
-List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T,
-                       const Rcpp::List& X_S_list, const Rcpp::List& Y_S_list, const Rcpp::List& C_S_list,
-                       const arma::mat& bs_c, // Needed to calculate source residuals
+List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resid_S_list,
+                       const arma::mat& X_T, const arma::vec& C_T,
+                       const Rcpp::List& X_S_list, const Rcpp::List& C_S_list,
                        const Rcpp::List& id, const arma::vec& sd_T,
-                       double lambda_T, const arma::vec& lambda_S,
-                       double tau, const arma::vec& tau_S,
+                       double lambda_T, double tau,
                        double sd_y_T, const arma::vec& sd_y_S,
                        int S_max, int fam_code, int slab_code,
                        bool approx = false, double k_apx = 10.0) {
@@ -30,11 +29,11 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   // Preallocate matrices to save speed
   std::vector<arma::mat> X_s_cpp(S);
   std::vector<arma::vec> C_s_cpp(S);
-  std::vector<arma::vec> Y_s_cpp(S);
+  std::vector<arma::vec> resid_S(S);
   for(int s=0; s<S; s++) {
     X_s_cpp[s] = as<arma::mat>(X_S_list[s]);
     C_s_cpp[s] = as<arma::vec>(C_S_list[s]);
-    Y_s_cpp[s] = as<arma::vec>(Y_S_list[s]);
+    resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
   // Current Beta_T
@@ -43,24 +42,10 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   double a0_T = bt_c(2*p);
   vec beta_T = ntl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code, approx, k_apx);
 
-  // Initialize Target Residuals
-  vec resid_T = Y_T - X_T * beta_T;
   double ll_T = ntl::log_lik_aft(resid_T, C_T, sd_y_T, fam_code);
 
-  // Initialize Source Residuals (List of vectors)
-  std::vector<vec> resid_S(S);
   double ll_S_total = 0;
-
   for(int s=0; s<S; s++) {
-    // Construct Bias for Source s
-    vec bs_col = bs_c.col(s);
-    vec w_s = bs_col.subvec(0, p-1);
-    vec a_s = bs_col.subvec(p, 2*p-1);
-    double a0_s = bs_col(2*p);
-    vec bias_s = ntl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code, approx, k_apx);
-
-    // Residual = Y - X * (beta_T + bias)
-    resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias_s);
     ll_S_total += ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
   }
 
@@ -164,7 +149,13 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
     N_s_out(k) = n_s;
   }
 
-  return List::create(Named("bt_c") = bt_c, Named("N_t") = N_s_out);
+  Rcpp::List resid_S_out(S);
+  for(int s = 0; s < S; s++) resid_S_out[s] = resid_S[s];
+
+  return List::create(Named("bt_c") = bt_c,
+                      Named("resid_T") = resid_T,
+                      Named("resid_S") = resid_S_out,
+                      Named("N_t") = N_s_out);
 }
 
 // ============================================================================
@@ -174,8 +165,8 @@ List update_target_aft(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
 
 // [[Rcpp::export]]
 List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
-                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
-                             const arma::vec& beta_T, // Fixed Target Beta
+                             const Rcpp::List& resid_S_list,
+                             const Rcpp::List& X_s_list, const Rcpp::List& C_s_list,
                              const arma::vec& lambda_S, const arma::vec& tau_S,
                              const arma::vec& sd_y_S,
                              int S_max, int fam_code, int slab_code,
@@ -187,23 +178,17 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
 
   std::vector<arma::mat> X_s_cpp(S);
   std::vector<arma::vec> C_s_cpp(S);
-  std::vector<arma::vec> Y_s_cpp(S);
+  std::vector<arma::vec> resid_S(S);
   for(int s=0; s<S; s++) {
     X_s_cpp[s] = as<arma::mat>(X_s_list[s]);
     C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
-    Y_s_cpp[s] = as<arma::vec>(Y_s_list[s]);
+    resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
-  // Pre-Calculate Current Residuals for ALL Sources
-  std::vector<vec> resid_S(S);
   std::vector<double> ll_S(S);
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    vec bias = ntl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code, approx, k_apx);
-
-    // Residual = Y - X(beta_T + bias)
-    resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias);
     ll_S[s] = ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
     current_ll_total += ll_S[s];
   }
@@ -310,66 +295,45 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
     N_s_out(j) = n_s;
   }
 
-  return List::create(Named("bs_c") = bs_c, Named("N_s") = N_s_out);
+  Rcpp::List resid_S_out(S);
+  for(int s = 0; s < S; s++) resid_S_out[s] = resid_S[s];
+
+  return List::create(Named("bs_c") = bs_c,
+                      Named("resid_S") = resid_S_out,
+                      Named("N_s") = N_s_out);
 }
 
 // [[Rcpp::export]]
-double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
-                               const double sd_0,
-                               arma::vec bt_c,
-                               const arma::mat& bs_c,
-                               const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T,
-                               const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
-                               double lambda_T, const arma::vec& lambda_S,
-                               double sd_y_T, const arma::vec& sd_y_S,
-                               const arma::vec& tau_S, // Fixed source scales
-                               int fam_code, int slab_code,
-                               bool approx = false, double k_apx = 10.0) {
+List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
+                             const double sd_0,
+                             const arma::vec& Y_T, arma::vec resid_T,
+                             const Rcpp::List& Y_s_list, const Rcpp::List& resid_S_list,
+                             arma::vec bt_c, const arma::mat& X_T, const arma::vec& C_T,
+                             double lambda_T,
+                             const Rcpp::List& X_s_list, const Rcpp::List& C_s_list,
+                             double sd_y_T, const arma::vec& sd_y_S,
+                             int fam_code, int slab_code,
+                             bool approx = false, double k_apx = 10.0) {
 
-  int p = (bt_c.n_elem - 1) / 2;
   int S = X_s_list.size();
 
   // 1. Setup Independent Gaussian Prior (Scalar)
   double nu = R::rnorm(0, sd_0);
 
-  // 2. Pre-calculate Fixed Residuals and Direction Vectors
-
-  // A. Target Direction (Unscaled Beta, scale=1.0)
-  vec w_T = bt_c.subvec(0, p-1);
-  vec a_T = bt_c.subvec(p, 2*p-1);
-  double a0_T = bt_c(2*p);
-  vec beta_T_raw = ntl::get_beta(w_T, a_T, 1.0, a0_T, lambda_T, slab_code, approx, k_apx);
-
-  vec Z_T = X_T * beta_T_raw;       // Target Direction
-  vec resid_fixed_T = Y_T;          // Target Fixed Residual (Y - 0)
-
-  // B. Source Directions and Fixed Residuals
-  std::vector<vec> Z_s_list(S);
-  std::vector<vec> resid_fixed_s_list(S);
-
-  double current_ll = 0;
   double tau_curr = std::abs(xi_t_curr);
+  std::vector<arma::vec> resid_S(S);
+  std::vector<arma::vec> Y_s_cpp(S);
+  std::vector<arma::vec> C_s_cpp(S);
 
-  // Calculate Initial Target LL
-  // Resid = Y - tau * Z
-  vec resid = resid_fixed_T - tau_curr * Z_T;
-  current_ll += ntl::log_lik_aft(resid, C_T, sd_y_T, fam_code);
-
-  // Calculate Initial Source LLs
   for(int s=0; s<S; s++) {
-    mat X_s = X_s_list[s];
-    vec Y_s = Y_s_list[s];
-    vec C_s = C_s_list[s];
-    vec bs_col = bs_c.col(s);
+    Y_s_cpp[s] = as<arma::vec>(Y_s_list[s]);
+    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
+    resid_S[s] = as<arma::vec>(resid_S_list[s]);
+  }
 
-    // Calculate Source Bias (Fixed during target scale update)
-    vec bias_s = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
-                               tau_S(s), bs_col(2*p), lambda_S(s), slab_code,
-                               approx, k_apx);
-    resid_fixed_s_list[s] = Y_s - X_s * bias_s; // Fixed part of residual: Y_s - X_s * bias_s
-    Z_s_list[s] = X_s * beta_T_raw; // Variable direction: X_s * beta_T_raw
-    resid = resid_fixed_s_list[s] - tau_curr * Z_s_list[s];
-    current_ll += ntl::log_lik_aft(resid, C_s, sd_y_S(s), fam_code); // Current Source LL
+  double current_ll = ntl::log_lik_aft(resid_T, C_T, sd_y_T, fam_code);
+  for(int s=0; s<S; s++) {
+    current_ll += ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
   }
 
   // 3. ESS Loop
@@ -381,6 +345,8 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
   double theta_max = theta;
 
   double xi_prop = xi_t_curr;
+  vec resid_T_prop = resid_T;
+  std::vector<vec> resid_S_prop(S);
 
   int iter = 0;
   while(true) {
@@ -390,17 +356,17 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
 
     double prop_ll = 0;
 
-    // Target LL
-    resid = resid_fixed_T - tau_prop * Z_T;
-    prop_ll += ntl::log_lik_aft(resid, C_T, sd_y_T, fam_code);
+    resid_T_prop = Y_T - (Y_T - resid_T) * (tau_prop / tau_curr);
+    prop_ll += ntl::log_lik_aft(resid_T_prop, C_T, sd_y_T, fam_code);
 
-    // Source LLs
     for(int s=0; s<S; s++) {
-      resid = resid_fixed_s_list[s] - tau_prop * Z_s_list[s];
-      prop_ll += ntl::log_lik_aft(resid, C_s_list[s], sd_y_S(s), fam_code);
+      resid_S_prop[s] = Y_s_cpp[s] - (Y_s_cpp[s] - resid_S[s]) * (tau_prop / tau_curr);
+      prop_ll += ntl::log_lik_aft(resid_S_prop[s], C_s_cpp[s], sd_y_S(s), fam_code);
     }
 
     if(prop_ll > log_y_thresh) {
+      resid_T = resid_T_prop;
+      resid_S = resid_S_prop;
       break;
     } else {
       iter++;
@@ -414,49 +380,43 @@ double update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
     }
   }
 
-  return xi_prop;
+  Rcpp::List resid_S_out(S);
+  for(int s = 0; s < S; s++) resid_S_out[s] = resid_S[s];
+
+  return List::create(Named("xi_t") = xi_prop,
+                      Named("resid_T") = resid_T,
+                      Named("resid_S") = resid_S_out);
 }
 
 // [[Rcpp::export]]
-arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
-                                   const double sd_0, // prior variance of scales
-                                   const arma::mat& bs_c,
-                                   const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
-                                   const arma::vec& beta_T,
-                                   const arma::vec& lambda_S,
-                                   const arma::vec& sd_y_S,
-                                   int fam_code, int slab_code,
-                                   bool approx = false, double k_apx = 10.0) {
+List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
+                              const double sd_0, // prior variance of scales
+                              const Rcpp::List& Y_s_list,
+                              const Rcpp::List& resid_S_list,
+                              const arma::mat& bs_c,
+                              const Rcpp::List& X_s_list, const Rcpp::List& C_s_list,
+                              const arma::vec& lambda_S,
+                              const arma::vec& sd_y_S,
+                              int fam_code, int slab_code,
+                              bool approx = false, double k_apx = 10.0) {
 
   int S = xi_s_curr.n_elem;
-  int p = (bs_c.n_rows - 1) / 2;
 
   // 1. Setup Independent Spherical Gaussian Prior
   vec nu = sd_0 * randn(S);
 
-  // 2. Pre-calculate "Fixed" Residuals and "Direction" Vectors
-
-  std::vector<vec> Z_list(S);          // The scalable direction vector
-  std::vector<vec> resid_fixed_list(S); // The static part of residual
-  double current_ll = 0;
+  std::vector<vec> resid_S(S);
+  std::vector<vec> Y_s_cpp(S);
+  std::vector<arma::vec> C_s_cpp(S);
 
   vec tau_curr = abs(xi_s_curr);
+  double current_ll = 0;
 
-  // Calculate current likelihood & linear predictor bias
   for(int s=0; s<S; s++) {
-    mat X = X_s_list[s];
-    vec Y = Y_s_list[s];
-    vec C = C_s_list[s];
-    vec bs_col = bs_c.col(s);
-
-    // Calculate unscaled bias
-    vec bias_init = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
-                                  1.0, bs_col(2*p), lambda_S(s), slab_code,
-                                  approx, k_apx);
-    Z_list[s] = X * bias_init; // Calculate linear predictor bias
-    resid_fixed_list[s] = Y - X * beta_T; // Calculate fixed residual from target pars
-    vec resid = resid_fixed_list[s] - tau_curr(s) * Z_list[s];
-    current_ll += ntl::log_lik_aft(resid, C, sd_y_S(s), fam_code); // Current Likelihood
+    Y_s_cpp[s] = as<arma::vec>(Y_s_list[s]);
+    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
+    resid_S[s] = as<arma::vec>(resid_S_list[s]);
+    current_ll += ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
   }
 
   // 3. ESS Loop
@@ -468,7 +428,7 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
   double theta_max = theta;
 
   vec xi_prop = xi_s_curr;
-  vec resid; // preallocate memory
+  std::vector<vec> resid_S_prop(S);
 
   int iter = 0;
   while(true) {
@@ -478,11 +438,12 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
 
     double prop_ll = 0;
     for(int s=0; s<S; s++) {
-      vec resid = resid_fixed_list[s] - tau_prop(s) * Z_list[s];
-      prop_ll += ntl::log_lik_aft(resid, C_s_list[s], sd_y_S(s), fam_code);
+      resid_S_prop[s] = Y_s_cpp[s] - (Y_s_cpp[s] - resid_S[s]) * (tau_prop(s) / tau_curr(s));
+      prop_ll += ntl::log_lik_aft(resid_S_prop[s], C_s_cpp[s], sd_y_S(s), fam_code);
     }
 
     if(prop_ll > log_y_thresh) {
+      resid_S = resid_S_prop;
       break;
     } else {
       iter++;
@@ -496,7 +457,111 @@ arma::vec update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variabl
     }
   }
 
-  return xi_prop;
+  Rcpp::List resid_S_out(S);
+  for(int s = 0; s < S; s++) resid_S_out[s] = resid_S[s];
+
+  return List::create(Named("xi_s") = xi_prop,
+                      Named("resid_S") = resid_S_out);
+}
+
+// [[Rcpp::export]]
+List update_target_intercept_tl_aft(double b0_T_curr, arma::vec resid_T, const arma::vec& C_T,
+                                    double sd_y_T, int fam_code,
+                                    double sd_prior = 10.0) {
+
+  double nu = R::rnorm(0, sd_prior);
+  double current_ll = ntl::log_lik_aft(resid_T, C_T, sd_y_T, fam_code);
+
+  double u = R::runif(0, 1);
+  double log_y_thresh = current_ll + log(u);
+
+  double theta = R::runif(0, 2 * M_PI);
+  double theta_min = theta - 2 * M_PI;
+  double theta_max = theta;
+
+  double b0_T_prop = b0_T_curr;
+  vec resid_T_prop(resid_T.n_elem);
+
+  int iter = 0;
+  while(true) {
+    b0_T_prop = b0_T_curr * cos(theta) + nu * sin(theta);
+    resid_T_prop = resid_T - (b0_T_prop - b0_T_curr);
+    double prop_ll = ntl::log_lik_aft(resid_T_prop, C_T, sd_y_T, fam_code);
+
+    if(prop_ll > log_y_thresh) {
+      resid_T = resid_T_prop;
+      break;
+    } else {
+      iter++;
+      if (iter >= 20) {
+        b0_T_prop = b0_T_curr;
+        break;
+      }
+      if(theta < 0) theta_min = theta;
+      else theta_max = theta;
+      theta = R::runif(theta_min, theta_max);
+    }
+  }
+
+  return List::create(Named("b0_T") = b0_T_prop,
+                      Named("resid_T") = resid_T);
+}
+
+// [[Rcpp::export]]
+List update_source_intercepts_tl_aft(arma::vec b0_s_curr,
+                                     const Rcpp::List& resid_S_list, const Rcpp::List& C_s_list,
+                                     const arma::vec& sd_y_S, int fam_code,
+                                     double sd_prior = 10.0) {
+
+  int S = b0_s_curr.n_elem;
+  std::vector<arma::vec> resid_S(S);
+  std::vector<arma::vec> C_s_cpp(S);
+  for(int s = 0; s < S; s++) {
+    resid_S[s] = as<arma::vec>(resid_S_list[s]);
+    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
+  }
+
+  for(int s = 0; s < S; s++) {
+    double nu = R::rnorm(0, sd_prior);
+    double current_ll = ntl::log_lik_aft(resid_S[s], C_s_cpp[s], sd_y_S(s), fam_code);
+
+    double u = R::runif(0, 1);
+    double log_y_thresh = current_ll + log(u);
+
+    double theta = R::runif(0, 2 * M_PI);
+    double theta_min = theta - 2 * M_PI;
+    double theta_max = theta;
+
+    double b0_prop = b0_s_curr(s);
+    vec resid_prop(resid_S[s].n_elem);
+
+    int iter = 0;
+    while(true) {
+      b0_prop = b0_s_curr(s) * cos(theta) + nu * sin(theta);
+      resid_prop = resid_S[s] - (b0_prop - b0_s_curr(s));
+      double prop_ll = ntl::log_lik_aft(resid_prop, C_s_cpp[s], sd_y_S(s), fam_code);
+
+      if(prop_ll > log_y_thresh) {
+        b0_s_curr(s) = b0_prop;
+        resid_S[s] = resid_prop;
+        break;
+      } else {
+        iter++;
+        if (iter >= 20) {
+          break;
+        }
+        if(theta < 0) theta_min = theta;
+        else theta_max = theta;
+        theta = R::runif(theta_min, theta_max);
+      }
+    }
+  }
+
+  Rcpp::List resid_S_out(S);
+  for(int s = 0; s < S; s++) resid_S_out[s] = resid_S[s];
+
+  return List::create(Named("b0_s") = b0_s_curr,
+                      Named("resid_S") = resid_S_out);
 }
 
 // Internal Helper for MH Step
@@ -517,35 +582,16 @@ double update_sigma_jeffreys_tl_aft(const arma::vec& resid, const arma::vec& C, 
 
 // Update Target Sigma
 // [[Rcpp::export]]
-double update_sigma_target_tl_aft(arma::vec bt_c, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
-                                  double current_sigma, double lambda, double tau,
-                                  int fam_code, int slab_code, double step_size=0.1,
-                                  bool approx = false, double k_apx = 10.0) {
-  int p = X.n_cols;
-
-  // Reconstruct Beta_T
-  vec w = bt_c.subvec(0, p-1);
-  vec a = bt_c.subvec(p, 2*p-1);
-  double a0 = bt_c(2*p);
-  vec beta_T = ntl::get_beta(w, a, tau, a0, lambda, slab_code, approx, k_apx);
-
-  vec resid = Y - X * beta_T;
+double update_sigma_target_tl_aft(const arma::vec& resid, const arma::vec& C,
+                                  double current_sigma, int fam_code,
+                                  double step_size=0.1) {
   return update_sigma_jeffreys_tl_aft(resid, C, current_sigma, step_size, fam_code);
 }
 
 // Update Source Sigma (Per Source)
 // [[Rcpp::export]]
-double update_sigma_source_tl_aft(arma::vec bs_col, const arma::vec& beta_T,
-                                  const arma::mat& X, const arma::vec& Y, const arma::vec& C,
-                                  double current_sigma, double lambda, double tau,
-                                  int fam_code, int slab_code, double step_size=0.1,
-                                  bool approx = false, double k_apx = 10.0) {
-  int p = X.n_cols;
-
-  // Reconstruct Bias and Beta_S
-  vec bias = ntl::calc_bias_vec(bs_col, tau, p, lambda, slab_code, approx, k_apx);
-  vec beta_s = beta_T + bias;
-
-  vec resid = Y - X * beta_s;
+double update_sigma_source_tl_aft(const arma::vec& resid, const arma::vec& C,
+                                  double current_sigma, int fam_code,
+                                  double step_size=0.1) {
   return update_sigma_jeffreys_tl_aft(resid, C, current_sigma, step_size, fam_code);
 }

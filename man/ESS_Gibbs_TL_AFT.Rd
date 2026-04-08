@@ -20,11 +20,14 @@ ESS_Gibbs_TL_AFT(
   xi_prior = 1,
   sig_T = NULL,
   sig_s = NULL,
+  b0_T = NULL,
+  b0_s = NULL,
+  intercept = TRUE,
   N = 5000,
   S.max = 500,
   block_size = 1,
   family = "Weibull",
-  slab = "poly",
+  slab = "exp",
   verbose = 1,
   debug = F
 )
@@ -47,6 +50,10 @@ ESS_Gibbs_TL_AFT(
 \item{lambda_T, lambda_s}{Threshold parameters.}
 
 \item{xi, xi_s}{Initial states of shadow variables for the slab scale parameter.}
+
+\item{b0_T, b0_s}{Initial value for the intercept term, default is 0.}
+
+\item{intercept}{Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.}
 
 \item{N}{Number of MCMC iterations.}
 
