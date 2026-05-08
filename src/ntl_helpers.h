@@ -59,9 +59,13 @@ inline arma::vec H_l_cpp(arma::vec w) {
 }
 
 inline double threshold_from_a0(double a0, double lambda) {
-  double thresh_prob = std::pow(pnorm_custom(a0), 1.0 / lambda);
-  return qnorm_custom(thresh_prob);
+  if (!std::isfinite(a0) || !std::isfinite(lambda) || lambda <= 0.0) {
+    return R_NaN;
+  }
+  double log_thresh_prob = R::pnorm(a0, 0.0, 1.0, 1, 1) / lambda;
+  return R::qnorm(log_thresh_prob, 0.0, 1.0, 1, 1);
 }
+
 
 inline double activation_scalar(double a_val, double thresh,
                                 int slab_code,

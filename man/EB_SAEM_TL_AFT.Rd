@@ -32,8 +32,10 @@ EB_SAEM_TL_AFT(
   schedule = 0.5,
   optimizer = c("legacy", "adagrad"),
   max_log_step = 0.35,
+  lambda_min = 1e-06,
+  lambda_max = 10000,
   polyak = TRUE,
-  polyak_start = 0.5,
+  polyak_start = 0.9,
   verbose = 1
 )
 }
@@ -80,9 +82,11 @@ EB_SAEM_TL_AFT(
 
 \item{optimizer}{"legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.}
 
+\item{lambda_min, lambda_max}{Minimum and maximum values of lambda.}
+
 \item{polyak, polyak_start}{Boolean to return average or not, starting from a percentage of the run.}
 
-\item{verbose}{Verbosity flag.}
+\item{verbose}{1 or 0 to show progress bar or not.}
 }
 \value{
 A list containing MCMC draws and lambda trajectories.

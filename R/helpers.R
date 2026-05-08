@@ -12,10 +12,13 @@ calc_bias <- function(mat,p,lam_s,tau_S,slab_code,approx=F,k_apx=10){
 
 #' @keywords internal
 #' @noRd
-a0_star <- function(a0_raw,lam) {
-  # This calculates a_0* = Phi_inv( Phi(a0_raw)^(1/p) )
-  return(qnorm(pnorm(a0_raw)^(1/lam)))
+a0_star <- function(a0_raw, lam) {
+  if (!is.finite(a0_raw) || !is.finite(lam) || lam <= 0) {
+    return(NaN)
+  }
+  qnorm(pnorm(a0_raw, log.p = TRUE) / lam, log.p = TRUE)
 }
+
 
 #' @keywords internal
 #' @noRd
@@ -55,7 +58,8 @@ calc_beta  = function(b,lambda,tau,p,slab_code,approx=F,k_apx=10){
   else if (slab_code == 2){T_u = T_c; H_u = H_c}
   else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
-  tau*H_u(b[1:p])*T_u(b[(p+1):(2*p)]-qnorm(pnorm(b[2*p+1])^(1/lambda)))
+  thresh <- a0_star(b[2*p + 1], lambda)
+  tau * H_u(b[1:p]) * T_u(b[(p+1):(2*p)] - thresh)
 }
 
 #' @keywords internal
@@ -78,7 +82,7 @@ calc_beta_group <- function(b, group_map, lambda, tau, slab_code, approx=F, k_ap
   else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
   a_group <- b[(p + 1):(p + G)]
-  thresh <- qnorm(pnorm(b[p + G + 1])^(1 / lambda))
+  thresh <- a0_star(b[p + G + 1], lambda)
   tau * H_u(b[1:p]) * T_u(a_group[group_map] - thresh)
 }
 

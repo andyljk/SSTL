@@ -269,7 +269,9 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 #' @param K_block Block size (iterations) per SAEM update.
 #' @param schedule Exponent controlling learning-rate decay (e.g., lr / t^schedule).
 #' @param optimizer "legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.
+#' @param lambda_min,lambda_max Minimum and maximum values of lambda.
 #' @param polyak,polyak_start Boolean to return average or not, starting from a percentage of the run.
+#' @param verbose 1 or 0 to show progress bar or not.
 #' @return A list containing MCMC draws and lambda trajectories.
 #' @export
 EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
@@ -285,7 +287,9 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
                           lr = 0.1, K_block = 10, schedule=0.5,
                           optimizer = c("legacy", "adagrad"),
                           max_log_step = 0.35,
-                          polyak = TRUE, polyak_start = 0.5,
+                          lambda_min = 1e-6,
+                          lambda_max = 1e4,
+                          polyak = TRUE, polyak_start = 0.9,
                           verbose=1){
 
   optimizer <- match.arg(optimizer)
@@ -301,6 +305,8 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
   # Init lambdas
   if (is.null(lambda_T)) lambda_T <- 9
   if (is.null(lambda_s)) lambda_s <- rep(3, S)
+  lambda_T <- min(lambda_max, max(lambda_min, lambda_T))
+  lambda_s <- pmin(lambda_max, pmax(lambda_min, lambda_s))
 
   # Burn-in
   res <- ESS_Gibbs_TL_AFT(
@@ -379,6 +385,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
       lr_t <- lr / (t_block^schedule)
       lambda_target <- -c(lambda_T, lambda_s) / c(B_hat_T, B_hat_s)
       lam_vec <- (1-lr_t) * c(lambda_T, lambda_s) + lr_t * lambda_target
+      lam_vec <- pmin(lambda_max, pmax(lambda_min, lam_vec))
       lambda_T = lam_vec[1]; lambda_s = lam_vec[2:(S+1)]
       theta <- log(c(lambda_T, lambda_s))
     } else {
@@ -387,6 +394,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
       lr_vec <- lr / ((t_block^schedule) * sqrt(G_acc + 1e-8))
       step_theta <- pmax(-max_log_step, pmin(max_log_step, lr_vec * d_vec))
       theta <- theta + step_theta
+      theta <- pmin(log(lambda_max), pmax(log(lambda_min), theta))
       lam_vec <- exp(theta)
       lambda_T <- lam_vec[1]; lambda_s <- lam_vec[2:(S + 1)]
     }
