@@ -22,7 +22,7 @@ EB_SAEM_TL_AFT(
   intercept = FALSE,
   N = 5000,
   burn = 1000,
-  S.max = 500,
+  S.max = 50,
   block_size = 1,
   family = "Weibull",
   slab = "poly",
@@ -30,12 +30,11 @@ EB_SAEM_TL_AFT(
   lr = 0.1,
   K_block = 10,
   schedule = 0.5,
-  optimizer = c("legacy", "adagrad"),
-  max_log_step = 0.35,
-  lambda_min = 1e-06,
+  lambda_min = 0.001,
   lambda_max = 10000,
   polyak = TRUE,
   polyak_start = 0.9,
+  warm_start = TRUE,
   verbose = 1
 )
 }
@@ -80,11 +79,11 @@ EB_SAEM_TL_AFT(
 
 \item{schedule}{Exponent controlling learning-rate decay (e.g., lr / t^schedule).}
 
-\item{optimizer}{"legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.}
-
 \item{lambda_min, lambda_max}{Minimum and maximum values of lambda.}
 
 \item{polyak, polyak_start}{Boolean to return average or not, starting from a percentage of the run.}
+
+\item{warm_start}{Whether to run five fixed MCEM warm-start iterations before SAEM.}
 
 \item{verbose}{1 or 0 to show progress bar or not.}
 }

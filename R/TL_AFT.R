@@ -268,8 +268,8 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 #' @param lr Learning rate for lambda updates.
 #' @param K_block Block size (iterations) per SAEM update.
 #' @param schedule Exponent controlling learning-rate decay (e.g., lr / t^schedule).
-#' @param optimizer "legacy" is the plain doubly smoothed MCEM, "adagrad" for adaptive step sizes.
 #' @param lambda_min,lambda_max Minimum and maximum values of lambda.
+#' @param warm_start Whether to run five fixed MCEM warm-start iterations before SAEM.
 #' @param polyak,polyak_start Boolean to return average or not, starting from a percentage of the run.
 #' @param verbose 1 or 0 to show progress bar or not.
 #' @return A list containing MCMC draws and lambda trajectories.
@@ -281,18 +281,15 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
                           xi=NULL, xi_s=NULL,
                           b0_T=NULL, b0_s=NULL, intercept=FALSE,
                           N=5000, burn = 1000,
-                          S.max=500, block_size=1,
+                          S.max=50, block_size=1,
                           family="Weibull", slab = "poly",
                           gamma_power = 0.9,
                           lr = 0.1, K_block = 10, schedule=0.5,
-                          optimizer = c("legacy", "adagrad"),
-                          max_log_step = 0.35,
-                          lambda_min = 1e-6,
+                          lambda_min = 1e-3,
                           lambda_max = 1e4,
                           polyak = TRUE, polyak_start = 0.9,
+                          warm_start = TRUE,
                           verbose=1){
-
-  optimizer <- match.arg(optimizer)
 
   # Type safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T); C_T <- as.numeric(C_T)
@@ -301,12 +298,17 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
   p <- ncol(X_T)
   S <- length(X_s)
   n_blocks <- floor(N / K_block)
+  if (!is.logical(warm_start) || length(warm_start) != 1 || is.na(warm_start)) {
+    stop("warm_start must be TRUE or FALSE.")
+  }
 
   # Init lambdas
   if (is.null(lambda_T)) lambda_T <- 9
   if (is.null(lambda_s)) lambda_s <- rep(3, S)
   lambda_T <- min(lambda_max, max(lambda_min, lambda_T))
   lambda_s <- pmin(lambda_max, pmax(lambda_min, lambda_s))
+  lambda_active <- c(lambda_T, lambda_s) > lambda_min & c(lambda_T, lambda_s) < lambda_max
+  lambda_fixed <- !lambda_active
 
   # Burn-in
   res <- ESS_Gibbs_TL_AFT(
@@ -334,17 +336,70 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
 
   mc.lam = array(NA, dim=c(n_blocks,S+1))
   colnames(mc.lam) <- c("lambda_T", if (S > 0) paste0("lambda_s", seq_len(S)) else NULL)
+  warm_start_iter <- 10
+  warm_start_N <- 300
+  mc_lam_mcem <- array(NA, dim=c(if (warm_start) warm_start_iter else 0, S+1))
+  colnames(mc_lam_mcem) <- colnames(mc.lam)
 
-  B_hat_T <- mean(pnorm(res$mc_bt[(burn-1000):burn,2*p+1],log.p=T))
-  B_hat_s <- sapply(1:S, function(s) mean(pnorm(res$mc_bs[2*p+1, s, (burn-1000):burn], log.p=T)))
-
-  theta <- log(c(lambda_T, lambda_s))
-  G_acc <- rep(0, S + 1) # norm of grad in adagrad-EB
+  tail_idx <- seq.int(max(1, burn - 999), burn)
+  B_hat_T <- mean(pnorm(res$mc_bt[tail_idx,2*p+1],log.p=T))
+  B_hat_s <- if (S > 0) {
+    sapply(seq_len(S), function(s) mean(pnorm(res$mc_bs[2*p+1, s, tail_idx], log.p=T)))
+  } else {
+    numeric(0)
+  }
 
   # Polyak-Ruppert average state
   polyak_from <- max(1, floor(polyak_start * n_blocks))
   lam_avg <- rep(0, S + 1)
   lam_avg_n <- 0
+
+  # warm start using MCEM - good for fast approximation to solution neighborhood
+  if (warm_start) {
+    for (mcem_iter in seq_len(warm_start_iter)) {
+      if (verbose == 1) cat("warm start iteration: ", mcem_iter, "/", warm_start_iter, "\n", sep="")
+      res <- ESS_Gibbs_TL_AFT(X_T=X_T, Y_T=Y_T, C_T=C_T,
+                              X_s=X_s, Y_s=Y_s, C_s=C_s,
+                              bt.c=bt.c, bs.c=bs.c,
+                              lambda_T=lambda_T, lambda_s=lambda_s,
+                              xi=xi, xi_s=xi_s,
+                              sig_T=sig_T, sig_s=sig_s,
+                              b0_T=b0_T, b0_s=b0_s, intercept=intercept,
+                              N=warm_start_N, S.max=S.max, block_size=block_size,
+                              family=family, slab=slab,
+                              verbose=0, debug=TRUE)
+      bt.c  <- res$mc_bt[warm_start_N, ]
+      xi    <- abs(res$mc_tau_T[warm_start_N])
+      sig_T <- res$mc_sig_T[warm_start_N]
+      if (intercept) b0_T <- res$mc_b0_T[warm_start_N]
+
+      bs.c  <- matrix(res$mc_bs[,,warm_start_N], nrow=2*p+1, ncol=S)
+      xi_s  <- abs(res$mc_tau_S[warm_start_N, ])
+      sig_s <- res$mc_sig_s[, warm_start_N]
+      if (intercept && S > 0) b0_s <- res$mc_b0_S[warm_start_N, ]
+
+      mean_logPhi_T <- mean(pnorm(res$mc_bt[,2*p+1], log.p=TRUE))
+      mean_logPhi_s <- if (S > 0) {
+        sapply(seq_len(S), function(s) mean(pnorm(res$mc_bs[2*p+1, s,], log.p=TRUE)))
+      } else {
+        numeric(0)
+      }
+      mean_logPhi_vec <- pmax(pmin(c(mean_logPhi_T, mean_logPhi_s), -1e-6), -30)
+      lam_vec <- c(lambda_T, lambda_s)
+      active_idx <- which(lambda_active)
+      if (length(active_idx) > 0) {
+        lam_vec[active_idx] <- -lam_vec[active_idx] / mean_logPhi_vec[active_idx]
+        lam_vec[active_idx] <- pmin(lambda_max, pmax(lambda_min, lam_vec[active_idx]))
+        lambda_active[active_idx] <- lam_vec[active_idx] > lambda_min & lam_vec[active_idx] < lambda_max
+        lambda_fixed <- !lambda_active
+      }
+      lambda_T <- lam_vec[1]
+      lambda_s <- lam_vec[-1]
+      mc_lam_mcem[mcem_iter, ] <- lam_vec
+      B_hat_T <- mean_logPhi_vec[1]
+      B_hat_s <- mean_logPhi_vec[-1]
+    }
+  }
 
   if (verbose==1) pb <- txtProgressBar(min = 0, max = n_blocks, style = 3)
   for(t_block in seq_len(n_blocks)){
@@ -372,32 +427,31 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     # SAEM update
     gamma_t <- t_block^(-gamma_power)     # Robbins step size
     mean_logPhi_T  <- mean(pnorm(res$mc_bt[,2*p+1],log.p=T))
-    B_hat_T        <- (1 - gamma_t) * B_hat_T + gamma_t * mean_logPhi_T
-    B_hat_T        <- max(min(B_hat_T, -1e-6), -30)  # clip
+    if (lambda_active[1]) {
+      B_hat_T      <- (1 - gamma_t) * B_hat_T + gamma_t * mean_logPhi_T
+      B_hat_T      <- max(min(B_hat_T, -1e-6), -30)  # clip
+    }
 
     for (s in seq_len(S)) {
       mean_logPhi_s <- mean(pnorm(res$mc_bs[2*p+1, s,], log.p = TRUE))
-      B_hat_s[s] <- (1 - gamma_t) * B_hat_s[s] + gamma_t * mean_logPhi_s
-      B_hat_s[s] <- max(min(B_hat_s[s], -1e-6), -30)
+      if (lambda_active[s + 1]) {
+        B_hat_s[s] <- (1 - gamma_t) * B_hat_s[s] + gamma_t * mean_logPhi_s
+        B_hat_s[s] <- max(min(B_hat_s[s], -1e-6), -30)
+      }
     }
 
-    if (optimizer == "legacy") {
-      lr_t <- lr / (t_block^schedule)
-      lambda_target <- -c(lambda_T, lambda_s) / c(B_hat_T, B_hat_s)
-      lam_vec <- (1-lr_t) * c(lambda_T, lambda_s) + lr_t * lambda_target
-      lam_vec <- pmin(lambda_max, pmax(lambda_min, lam_vec))
-      lambda_T = lam_vec[1]; lambda_s = lam_vec[2:(S+1)]
-      theta <- log(c(lambda_T, lambda_s))
-    } else {
-      d_vec <- pmax(-max_log_step, pmin(max_log_step, log(-1 / c(B_hat_T, B_hat_s))))
-      G_acc <- G_acc + d_vec^2
-      lr_vec <- lr / ((t_block^schedule) * sqrt(G_acc + 1e-8))
-      step_theta <- pmax(-max_log_step, pmin(max_log_step, lr_vec * d_vec))
-      theta <- theta + step_theta
-      theta <- pmin(log(lambda_max), pmax(log(lambda_min), theta))
-      lam_vec <- exp(theta)
-      lambda_T <- lam_vec[1]; lambda_s <- lam_vec[2:(S + 1)]
+    lr_t <- lr / (t_block^schedule)
+    lam_vec <- c(lambda_T, lambda_s)
+    B_hat_vec <- c(B_hat_T, B_hat_s)
+    active_idx <- which(lambda_active)
+    if (length(active_idx) > 0) {
+      lambda_target <- -lam_vec[active_idx] / B_hat_vec[active_idx]
+      lam_vec[active_idx] <- (1-lr_t) * lam_vec[active_idx] + lr_t * lambda_target
+      lam_vec[active_idx] <- pmin(lambda_max, pmax(lambda_min, lam_vec[active_idx]))
+      lambda_active[active_idx] <- lam_vec[active_idx] > lambda_min & lam_vec[active_idx] < lambda_max
+      lambda_fixed <- !lambda_active
     }
+    lambda_T = lam_vec[1]; lambda_s = lam_vec[-1]
 
     lam_now <- c(lambda_T, lambda_s)
     mc.lam[t_block, ] <- lam_now
@@ -409,6 +463,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     if (verbose==1) setTxtProgressBar(pb, t_block)
   }
   final_lam <- if (polyak && lam_avg_n > 0) lam_avg else c(lambda_T, lambda_s)
+  final_lam[lambda_fixed] <- c(lambda_T, lambda_s)[lambda_fixed]
   out <- list(mc.lam = mc.lam, final_lam = final_lam,
               bt_c = bt.c, bs_c = bs.c,
               xi = xi, xi_s = xi_s,
@@ -417,5 +472,6 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
     out$b0_T = b0_T
     out$b0_s = b0_s
   }
+  out$mc_lam_mcem <- mc_lam_mcem
   return(out)
 }
