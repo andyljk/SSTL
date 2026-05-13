@@ -65,18 +65,18 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
   d    <- length(bt.c)                   # nr of parameters
   K    <- length(id)                     # nr of parameter blocks, i.e. b=(b.1, ..., b.K) with b.k in R^d.k
   MC.beta = matrix(NA, N, p)
+  mc.sig_T = rep(NA,N); mc.sig_s = array(NA, dim=c(S,N))
   if (debug){
     N.t  <- matrix(NA, N, K)               # nr of slice sampling itr at each MCMC-itr
     N.s  <- array(NA, dim=c(N, (2*p+1)))   # nr of slice sampling itr at each MCMC-itr
     mc.bt <- matrix(NA, N, d)              # storage for the target parameter
     mc.bs = array(NA, dim=c(2*p+1, S, N))  # storage for the bias parameters
-    mc.sig_T = rep(NA,N); mc.sig_s = array(NA, dim=c(S,N))
     mc.tau_T = rep(NA,N)
     mc.tau_S = array(NA,dim=c(N,S))
   }
   if (intercept) {
-    MC.b0_T <- rep(NA_real_, N)
-    MC.b0_S <- array(NA_real_, dim = c(N, S))
+    MC.b0_T <- rep(NA, N)
+    MC.b0_S <- array(NA, dim = c(N, S))
   }
   if (is.null(xi)) xi = 0.5
   if (is.null(xi_s)) xi_s = rep(0.5,S)
@@ -171,9 +171,8 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
       mc.bt[i, ] <- bt.c
       N.t[i,] = cpp_res_T$N_t
       mc.tau_T[i] <- tau
-      mc.sig_T[i] = sig_T
     }
-
+    mc.sig_T[i] = sig_T
 
 
     # ---------------------------------------------------------
@@ -223,7 +222,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
                                                current_sigma = sig_s[s],
                                                fam_code=fam_code,
                                                step_size=0.1)
-        if (debug) mc.sig_s[s, i] <- sig_s[s]
+        mc.sig_s[s, i] <- sig_s[s]
       }
 
       if (debug){
@@ -252,7 +251,8 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
     }
     return(out)
   }else{
-    out <- list(MC_beta = MC.beta)
+    out <- list(MC_beta = MC.beta,
+                mc_sig_T = mc.sig_T, mc_sig_s = mc.sig_s)
     if (intercept) {
       out$MC_b0_T <- MC.b0_T
       out$MC_b0_S <- MC.b0_S

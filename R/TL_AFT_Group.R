@@ -75,14 +75,14 @@ ESS_Gibbs_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
 
   d <- length(bt.c)
   MC.beta <- matrix(NA, N, p)
+  mc.sig_T <- rep(NA, N)
+  mc.sig_s <- array(NA, dim = c(S, N))
 
   if (debug) {
     N.t <- matrix(NA, N, p + G + 1)
     N.s <- array(NA, dim = c(N, p + G + 1))
     mc.bt <- matrix(NA, N, d)
     mc.bs <- array(NA, dim = c(p + G + 1, S, N))
-    mc.sig_T <- rep(NA, N)
-    mc.sig_s <- array(NA, dim = c(S, N))
     mc.tau_T <- rep(NA, N)
     mc.tau_S <- array(NA, dim = c(N, S))
   }
@@ -166,11 +166,11 @@ ESS_Gibbs_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
                                         current_sigma = sig_T,
                                         fam_code = fam_code, step_size = 0.1)
 
+    mc.sig_T[i] <- sig_T
     if (debug) {
       mc.bt[i, ] <- bt.c
       N.t[i, ] <- cpp_res_T$N_t
       mc.tau_T[i] <- tau
-      mc.sig_T[i] <- sig_T
     }
 
     if (S > 0) {
@@ -219,7 +219,7 @@ ESS_Gibbs_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
                                                current_sigma = sig_s[s],
                                                fam_code = fam_code,
                                                step_size = 0.1)
-        if (debug) mc.sig_s[s, i] <- sig_s[s]
+        mc.sig_s[s, i] <- sig_s[s]
       }
 
       if (debug) {
@@ -250,7 +250,8 @@ ESS_Gibbs_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
     return(out)
   }
 
-  out <- list(MC_beta = MC.beta)
+  out <- list(MC_beta = MC.beta,
+              mc_sig_T = mc.sig_T, mc_sig_s = mc.sig_s)
   if (intercept) {
     out$MC_b0_T <- MC.b0_T
     out$MC_b0_S <- MC.b0_S

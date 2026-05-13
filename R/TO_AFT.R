@@ -62,9 +62,9 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
     N.s  <- matrix(NA, N, K)              # nr of slice sampling itr at each MCMC-itr
     mc.b <- matrix(NA, N, d)              # storage
     mc.tau = rep(NA,N)
-    mc.sigma = rep(NA,N)
   }
   MC.beta = matrix(NA, N, p)
+  mc.sigma = rep(NA,N)
   if (is.null(sd_y)) sd_y = 1
   if (is.null(xi)) xi = 1
   if (is.null(b0)) b0 = 0
@@ -118,8 +118,8 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
     if (debug){
       mc.b[i, ]    <- b.c                  # Store the sample
       mc.tau[i]   <- exp(xi)
-      mc.sigma[i] <- sd_y
     }
+    mc.sigma[i] <- sd_y
     if (intercept) MC.b0[i] <- b0
     MC.beta[i,] = calc_beta(b.c,lambda,exp(xi),p,slab_code)
 
@@ -132,7 +132,7 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
     if (intercept) out$mc_b0 <- MC.b0
     return(out)
   } else {
-    out <- list(MC_beta = MC.beta)
+    out <- list(MC_beta = MC.beta, mc_sigma = mc.sigma)
     if (intercept) out$MC_b0 <- MC.b0
     return(out)
   }
