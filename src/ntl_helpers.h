@@ -92,6 +92,9 @@ inline arma::vec slab_weight_vec(const arma::vec& w, int slab_code) {
   if (slab_code == 3) {
     return H_n1_cpp(w);
   }
+  if (slab_code == 5) {
+    return H_l_cpp(w);
+  }
   return H_n2_cpp(w);
 }
 
@@ -108,6 +111,8 @@ inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
   }else if (slab_code == 3){
     arma::vec act = approx ? T_log_cpp(a - threshold, k_apx) : T_n1_cpp(a - threshold);
     return tau * H_n1_cpp(w) % act;
+  }else if (slab_code == 5){
+    return tau * H_l_cpp(w) % T_n1_cpp(a - threshold);
   }else {
     return tau * H_n2_cpp(w) % T_n2_cpp(a - threshold);
   }
@@ -140,6 +145,9 @@ inline double calc_scalar_beta(double w_val, double a_val, double thresh,
   } else if (slab_code == 3){
     act = approx ? 1.0 / (1.0 + std::exp(-k_apx * (a_val-thresh))) : (a_val > thresh) ? 1.0 : 0.0;
     h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::pow(std::expm1(2.0 * w_val * w_val), 0.25);
+  } else if (slab_code == 5) {
+    act = (a_val > thresh) ? 1.0 : 0.0;
+    h_w = w_val;
   } else {
     act = (a_val > thresh) ? 1.0 : 0.0;
     h_w = 2.0 * (w_val > 0 ? 1.0 : -1.0) * std::sqrt(std::abs(w_val)) * std::exp(0.5 * w_val * w_val);

@@ -53,7 +53,7 @@ EB_SAEM_AFT(
 
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
 
-\item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp'. Default is 'nlp'.}
+\item{slab}{Specification of slab distribution, one of 'exp', 'poly', 'nlp', 'guassian'. Default is 'nlp'.}
 
 \item{b0}{Initial value for the intercept term, default is 0.}
 

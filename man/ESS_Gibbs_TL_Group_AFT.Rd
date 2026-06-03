@@ -65,7 +65,7 @@ ESS_Gibbs_TL_Group_AFT(
 
 \item{family}{Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.}
 
-\item{slab}{Specification of slab type, one of 'exp', 'poly', 'nlp'. Default is 'exp'.}
+\item{slab}{Specification of slab type, one of 'exp', 'poly', 'nlp', 'guassian'. Default is 'exp'.}
 
 \item{verbose}{Verbosity flag.}
 

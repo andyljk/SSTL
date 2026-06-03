@@ -58,6 +58,7 @@ calc_beta  = function(b,lambda,tau,p,slab_code,approx=F,k_apx=10){
   else if (slab_code == 2){T_u = T_c; H_u = H_c}
   else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
+  else if (slab_code == 5){T_u = T_n1; H_u = H_l}
   thresh <- a0_star(b[2*p + 1], lambda)
   tau * H_u(b[1:p]) * T_u(b[(p+1):(2*p)] - thresh)
 }
@@ -81,6 +82,7 @@ calc_beta_group <- function(b, group_map, lambda, tau, slab_code, approx=F, k_ap
   else if (slab_code == 2){T_u = T_c; H_u = H_c}
   else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
+  else if (slab_code == 5){T_u = T_n1; H_u = H_l}
   a_group <- b[(p + 1):(p + G)]
   thresh <- a0_star(b[p + G + 1], lambda)
   tau * H_u(b[1:p]) * T_u(a_group[group_map] - thresh)
