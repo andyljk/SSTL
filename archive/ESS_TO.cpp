@@ -2,7 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp17)]]
 
-#include "ntl_helpers.h"
+#include "sstl_helpers.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -24,9 +24,9 @@ List update_blocks_cpp(arma::vec b_c, const arma::mat& X, const arma::vec& Y,
   double a0 = b_c(2*p);
 
   // Initialize Beta and Residuals ONCE
-  vec beta = ntl::get_beta(w, a, tau, a0, lambda, slab_code);
+  vec beta = sstl::get_beta(w, a, tau, a0, lambda, slab_code);
   vec resid = Y - X * beta;
-  double current_ll = ntl::log_lik_resid(resid, sd_y);
+  double current_ll = sstl::log_lik_resid(resid, Y, sd_y);
 
   vec N_s = zeros(K);
 
@@ -72,7 +72,7 @@ List update_blocks_cpp(arma::vec b_c, const arma::mat& X, const arma::vec& Y,
         vec a_prop = b_prop.subvec(p, 2*p-1);
         double a0_prop = b_prop(2*p);
 
-        beta_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
+        beta_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
         vec delta_beta = beta_prop - beta;
 
         resid_prop -= X * delta_beta;
@@ -86,7 +86,7 @@ List update_blocks_cpp(arma::vec b_c, const arma::mat& X, const arma::vec& Y,
         // Extract the proposed w and a ONLY for this specific block
         vec w_sub_prop = f_prop.subvec(0, half_size - 1);
         vec a_sub_prop = f_prop.subvec(half_size, idx.n_elem - 1);
-        beta_prop = ntl::get_beta(w_sub_prop, a_sub_prop, tau, a0, lambda, slab_code);
+        beta_prop = sstl::get_beta(w_sub_prop, a_sub_prop, tau, a0, lambda, slab_code);
 
         // Extract the current beta for these specific columns
         vec beta_sub_curr = beta.subvec(start_col, end_col);
@@ -94,7 +94,7 @@ List update_blocks_cpp(arma::vec b_c, const arma::mat& X, const arma::vec& Y,
         resid_prop -= X.cols(start_col, end_col) * d_sub;
       }
 
-      double ll_prop = ntl::log_lik_resid(resid_prop, sd_y);
+      double ll_prop = sstl::log_lik_resid(resid_prop, Y, sd_y);
 
       if(ll_prop > log_y_threshold) {
         // ACCEPT

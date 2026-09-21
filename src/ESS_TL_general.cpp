@@ -13,14 +13,14 @@ using namespace arma;
 // ============================================================================
 
 // [[Rcpp::export]]
-List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resid_S_list,
-                       const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T,
-                       const Rcpp::List& X_S_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_S_list,
+List update_target_general(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resid_S_list,
+                       const arma::mat& X_T, const arma::vec& Y_T,
+                       const Rcpp::List& X_S_list, const Rcpp::List& Y_s_list,
                        const Rcpp::List& id, const arma::vec& sd_T,
                        double lambda_T, double tau,
                        double sd_y_T, const arma::vec& sd_y_S,
                        int S_max, int fam_code, int slab_code,
-                       bool approx = false, double k_apx = 10.0) {
+                       bool approx = false, double k_apx = 10.0, double df = 4.0) {
 
   int p = X_T.n_cols;
   int S = X_S_list.size();
@@ -35,11 +35,9 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
     Rcpp::NumericVector Y_s = Y_s_list[s];
     Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
   }
-  std::vector<arma::vec> C_s_cpp(S);
   std::vector<arma::vec> resid_S(S);
   for(int s=0; s<S; s++) {
     X_s_cpp[s] = as<arma::mat>(X_S_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_S_list[s]);
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
@@ -49,11 +47,11 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
   double a0_T = bt_c(2*p);
   vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code, approx, k_apx);
 
-  double ll_T = sstl::log_lik_aft(resid_T, Y_T, C_T, sd_y_T, fam_code);
+  double ll_T = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
 
   double ll_S_total = 0;
   for(int s=0; s<S; s++) {
-    ll_S_total += sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    ll_S_total += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   double current_ll_global = ll_T + ll_S_total;
@@ -114,7 +112,7 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
         vec d_sub = delta_beta.subvec(start, end);
         resid_T_prop -= X_T.cols(start, end) * d_sub;
       }
-      double ll_T_prop = sstl::log_lik_aft(resid_T_prop, Y_T, C_T, sd_y_T, fam_code);
+      double ll_T_prop = sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
       // 2. Update Source Residuals
       double ll_S_prop_total = 0;
@@ -134,7 +132,7 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
           resid_S_prop[s] -= X_s_cpp[s].cols(start, end) * d_sub;
         }
 
-        ll_S_prop_total += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+        ll_S_prop_total += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
       }
 
       double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -171,13 +169,13 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
 // ============================================================================
 
 // [[Rcpp::export]]
-List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
+List update_source_joint_general(arma::mat bs_c, // (2p+1) x S matrix
                              const Rcpp::List& resid_S_list,
-                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
+                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list,
                              const arma::vec& lambda_S, const arma::vec& tau_S,
                              const arma::vec& sd_y_S,
                              int S_max, int fam_code, int slab_code,
-                             bool approx = false, double k_apx = 10.0) {
+                             bool approx = false, double k_apx = 10.0, double df = 4.0) {
 
   int p = (bs_c.n_rows - 1) / 2;
   int S = bs_c.n_cols;
@@ -191,11 +189,9 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
     Rcpp::NumericVector Y_s = Y_s_list[s];
     Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
   }
-  std::vector<arma::vec> C_s_cpp(S);
   std::vector<arma::vec> resid_S(S);
   for(int s=0; s<S; s++) {
     X_s_cpp[s] = as<arma::mat>(X_s_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
@@ -203,7 +199,7 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    ll_S[s] = sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    ll_S[s] = sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     current_ll_total += ll_S[s];
   }
 
@@ -291,7 +287,7 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           resid_S_prop[s] -= X_s_cpp[s].col(k) * d_val;
         }
 
-        prop_ll_total += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+        prop_ll_total += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
       }
 
       if(prop_ll_total > log_y_threshold) {
@@ -318,16 +314,16 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
 }
 
 // [[Rcpp::export]]
-List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
+List update_target_scale_general(double xi_t_curr, // Scalar shadow variable
                              const double sd_0,
                              const arma::vec& Y_T_scale, arma::vec resid_T,
                              const Rcpp::List& Y_s_scale_list, const Rcpp::List& resid_S_list,
-                             arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_T,
+                             arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_T,
                              double lambda_T,
-                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
+                             const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list,
                              double sd_y_T, const arma::vec& sd_y_S,
                              int fam_code, int slab_code,
-                             bool approx = false, double k_apx = 10.0) {
+                             bool approx = false, double k_apx = 10.0, double df = 4.0) {
 
   // Scale-adjusted responses construct proposals; original responses enter the likelihood.
   int S = X_s_list.size();
@@ -345,17 +341,15 @@ List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
     Rcpp::NumericVector Y_s = Y_s_list[s];
     Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
   }
-  std::vector<arma::vec> C_s_cpp(S);
 
   for(int s=0; s<S; s++) {
     Y_s_scale_cpp[s] = as<arma::vec>(Y_s_scale_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
-  double current_ll = sstl::log_lik_aft(resid_T, Y_T, C_T, sd_y_T, fam_code);
+  double current_ll = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
   for(int s=0; s<S; s++) {
-    current_ll += sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    current_ll += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   // 3. ESS Loop
@@ -379,11 +373,11 @@ List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
     double prop_ll = 0;
 
     resid_T_prop = Y_T_scale - (Y_T_scale - resid_T) * (tau_prop / tau_curr);
-    prop_ll += sstl::log_lik_aft(resid_T_prop, Y_T, C_T, sd_y_T, fam_code);
+    prop_ll += sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     for(int s=0; s<S; s++) {
       resid_S_prop[s] = Y_s_scale_cpp[s] - (Y_s_scale_cpp[s] - resid_S[s]) * (tau_prop / tau_curr);
-      prop_ll += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+      prop_ll += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }
 
     if(prop_ll > log_y_thresh) {
@@ -411,16 +405,16 @@ List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
 }
 
 // [[Rcpp::export]]
-List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
+List update_source_scales_general(arma::vec xi_s_curr, // Size S shadow variables
                               const double sd_0, // prior variance of scales
                               const Rcpp::List& Y_s_scale_list,
                               const Rcpp::List& resid_S_list,
                               const arma::mat& bs_c,
-                              const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
+                              const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list,
                               const arma::vec& lambda_S,
                               const arma::vec& sd_y_S,
                               int fam_code, int slab_code,
-                              bool approx = false, double k_apx = 10.0) {
+                              bool approx = false, double k_apx = 10.0, double df = 4.0) {
 
   // Scale-adjusted responses construct proposals; original responses enter the likelihood.
   int S = xi_s_curr.n_elem;
@@ -437,16 +431,14 @@ List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
     Rcpp::NumericVector Y_s = Y_s_list[s];
     Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
   }
-  std::vector<arma::vec> C_s_cpp(S);
 
   vec tau_curr = abs(xi_s_curr);
   double current_ll = 0;
 
   for(int s=0; s<S; s++) {
     Y_s_scale_cpp[s] = as<arma::vec>(Y_s_scale_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
-    current_ll += sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    current_ll += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   // 3. ESS Loop
@@ -469,7 +461,7 @@ List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
     double prop_ll = 0;
     for(int s=0; s<S; s++) {
       resid_S_prop[s] = Y_s_scale_cpp[s] - (Y_s_scale_cpp[s] - resid_S[s]) * (tau_prop(s) / tau_curr(s));
-      prop_ll += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+      prop_ll += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }
 
     if(prop_ll > log_y_thresh) {
@@ -495,12 +487,12 @@ List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
 }
 
 // [[Rcpp::export]]
-List update_target_intercept_tl_aft(double b0_T_curr, arma::vec resid_T, const arma::vec& Y_T, const arma::vec& C_T,
+List update_target_intercept_tl_general(double b0_T_curr, arma::vec resid_T, const arma::vec& Y_T,
                                     double sd_y_T, int fam_code,
-                                    double sd_prior = 10.0) {
+                                    double sd_prior = 10.0, double df = 4.0) {
 
   double nu = R::rnorm(0, sd_prior);
-  double current_ll = sstl::log_lik_aft(resid_T, Y_T, C_T, sd_y_T, fam_code);
+  double current_ll = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
 
   double u = R::runif(0, 1);
   double log_y_thresh = current_ll + log(u);
@@ -516,7 +508,7 @@ List update_target_intercept_tl_aft(double b0_T_curr, arma::vec resid_T, const a
   while(true) {
     b0_T_prop = b0_T_curr * cos(theta) + nu * sin(theta);
     resid_T_prop = resid_T - (b0_T_prop - b0_T_curr);
-    double prop_ll = sstl::log_lik_aft(resid_T_prop, Y_T, C_T, sd_y_T, fam_code);
+    double prop_ll = sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid_T = resid_T_prop;
@@ -538,10 +530,10 @@ List update_target_intercept_tl_aft(double b0_T_curr, arma::vec resid_T, const a
 }
 
 // [[Rcpp::export]]
-List update_source_intercepts_tl_aft(arma::vec b0_s_curr,
-                                     const Rcpp::List& resid_S_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
+List update_source_intercepts_tl_general(arma::vec b0_s_curr,
+                                     const Rcpp::List& resid_S_list, const Rcpp::List& Y_s_list,
                                      const arma::vec& sd_y_S, int fam_code,
-                                     double sd_prior = 10.0) {
+                                     double sd_prior = 10.0, double df = 4.0) {
 
   int S = b0_s_curr.n_elem;
   std::vector<arma::vec> resid_S(S);
@@ -552,15 +544,13 @@ List update_source_intercepts_tl_aft(arma::vec b0_s_curr,
     Rcpp::NumericVector Y_s = Y_s_list[s];
     Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
   }
-  std::vector<arma::vec> C_s_cpp(S);
   for(int s = 0; s < S; s++) {
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
   }
 
   for(int s = 0; s < S; s++) {
     double nu = R::rnorm(0, sd_prior);
-    double current_ll = sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    double current_ll = sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
 
     double u = R::runif(0, 1);
     double log_y_thresh = current_ll + log(u);
@@ -576,7 +566,7 @@ List update_source_intercepts_tl_aft(arma::vec b0_s_curr,
     while(true) {
       b0_prop = b0_s_curr(s) * cos(theta) + nu * sin(theta);
       resid_prop = resid_S[s] - (b0_prop - b0_s_curr(s));
-      double prop_ll = sstl::log_lik_aft(resid_prop, Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+      double prop_ll = sstl::log_lik_general(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
 
       if(prop_ll > log_y_thresh) {
         b0_s_curr(s) = b0_prop;
@@ -602,15 +592,25 @@ List update_source_intercepts_tl_aft(arma::vec b0_s_curr,
 }
 
 // Internal Helper for MH Step
-double update_sigma_jeffreys_tl_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C, double current_sigma, double step_size, int fam_code) {
+double update_sigma_mh_tl_general(const arma::vec& resid, const arma::vec& Y, double current_sigma, double step_size, int fam_code, double df = 4.0) {
+  if (fam_code == 2 || fam_code == 4) return current_sigma; // Logistic and Poisson regression have no outcome scale.
+
   double log_sigma_curr = log(current_sigma);
   double log_sigma_prop = R::rnorm(log_sigma_curr, step_size);
   double sigma_prop     = exp(log_sigma_prop);
 
-  double ll_curr = sstl::log_lik_aft(resid, Y, C, current_sigma, fam_code);
-  double ll_prop = sstl::log_lik_aft(resid, Y, C, sigma_prop, fam_code);
+  double ll_curr = sstl::log_lik_general(resid, Y, current_sigma, fam_code, df);
+  double ll_prop = sstl::log_lik_general(resid, Y, sigma_prop, fam_code, df);
 
-  if (log(R::runif(0, 1)) < (ll_prop - ll_curr)) {
+  // Prior ratio including the log-proposal Jacobian; Jeffreys prior cancels for Gaussian/Student-t.
+  double log_prior_ratio = 0.0;
+  if (fam_code == 5) { // Inverse-Gamma(0.4, 0.3) for negative-binomial shape
+    log_prior_ratio = -0.4 * (log_sigma_prop - log_sigma_curr) - 0.3 * (1.0 / sigma_prop - 1.0 / current_sigma);
+  } else if (fam_code == 6 || fam_code == 7) { // Gamma(0.01, 0.01) for gamma shape/beta precision
+    log_prior_ratio = 0.01 * (log_sigma_prop - log_sigma_curr) - 0.01 * (sigma_prop - current_sigma);
+  }
+
+  if (log(R::runif(0, 1)) < (ll_prop - ll_curr + log_prior_ratio)) {
     return sigma_prop;
   } else {
     return current_sigma;
@@ -619,16 +619,16 @@ double update_sigma_jeffreys_tl_aft(const arma::vec& resid, const arma::vec& Y, 
 
 // Update Target Sigma
 // [[Rcpp::export]]
-double update_sigma_target_tl_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C,
+double update_sigma_target_tl_general(const arma::vec& resid, const arma::vec& Y,
                                   double current_sigma, int fam_code,
-                                  double step_size=0.1) {
-  return update_sigma_jeffreys_tl_aft(resid, Y, C, current_sigma, step_size, fam_code);
+                                  double step_size=0.1, double df = 4.0) {
+  return update_sigma_mh_tl_general(resid, Y, current_sigma, step_size, fam_code, df);
 }
 
 // Update Source Sigma (Per Source)
 // [[Rcpp::export]]
-double update_sigma_source_tl_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C,
+double update_sigma_source_tl_general(const arma::vec& resid, const arma::vec& Y,
                                   double current_sigma, int fam_code,
-                                  double step_size=0.1) {
-  return update_sigma_jeffreys_tl_aft(resid, Y, C, current_sigma, step_size, fam_code);
+                                  double step_size=0.1, double df = 4.0) {
+  return update_sigma_mh_tl_general(resid, Y, current_sigma, step_size, fam_code, df);
 }

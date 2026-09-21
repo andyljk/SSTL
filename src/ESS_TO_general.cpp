@@ -11,10 +11,10 @@ using namespace arma;
 // --- MAIN FUNCTION ---
 
 // [[Rcpp::export]]
-List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
+List update_blocks_general(arma::vec b_c, arma::vec resid, const arma::mat& X, const arma::vec& Y,
                        const Rcpp::List& id, const arma::vec& sd_0,
                        double lambda, double tau, double sd_y, int S_max,
-                       int fam_code, int slab_code) {
+                       int fam_code, int slab_code, double df = 4.0) {
 
   int p = X.n_cols;
   int K = id.size();
@@ -26,7 +26,7 @@ List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const
 
   // Reconstruct the current slope effects once; residual is passed in
   vec beta = sstl::get_beta(w, a, tau, a0, lambda, slab_code);
-  double current_ll = sstl::log_lik_aft(resid, Y, C, sd_y, fam_code);
+  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
 
   vec N_s = zeros(K);
 
@@ -94,7 +94,7 @@ List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const
         resid_prop -= X.cols(start_col, end_col) * d_sub;
       }
 
-      double ll_prop = sstl::log_lik_aft(resid_prop, Y, C, sd_y, fam_code);
+      double ll_prop = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
 
       if(ll_prop > log_y_threshold) {
         // ACCEPT
@@ -124,18 +124,28 @@ List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const
 
 
 // [[Rcpp::export]]
-double update_sigma_to_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C,
+double update_sigma_to_general(const arma::vec& resid, const arma::vec& Y,
                            double current_sigma, int fam_code,
-                           double step_size=0.1) {
+                           double step_size=0.1, double df = 4.0) {
+  if (fam_code == 2 || fam_code == 4) return current_sigma; // Logistic and Poisson regression have no outcome scale.
+
   // Metropolis-Hastings Step
   double log_sigma_curr = log(current_sigma);
   double log_sigma_prop = R::rnorm(log_sigma_curr, step_size);
   double sigma_prop     = exp(log_sigma_prop);
 
-  double ll_curr = sstl::log_lik_aft(resid, Y, C, current_sigma, fam_code);
-  double ll_prop = sstl::log_lik_aft(resid, Y, C, sigma_prop, fam_code);
+  double ll_curr = sstl::log_lik_general(resid, Y, current_sigma, fam_code, df);
+  double ll_prop = sstl::log_lik_general(resid, Y, sigma_prop, fam_code, df);
 
-  if (log(R::runif(0, 1)) < (ll_prop - ll_curr)) {
+  // Prior ratio including the log-proposal Jacobian; Jeffreys prior cancels for Gaussian/Student-t.
+  double log_prior_ratio = 0.0;
+  if (fam_code == 5) { // Inverse-Gamma(0.4, 0.3) for negative-binomial shape
+    log_prior_ratio = -0.4 * (log_sigma_prop - log_sigma_curr) - 0.3 * (1.0 / sigma_prop - 1.0 / current_sigma);
+  } else if (fam_code == 6 || fam_code == 7) { // Gamma(0.01, 0.01) for gamma shape/beta precision
+    log_prior_ratio = 0.01 * (log_sigma_prop - log_sigma_curr) - 0.01 * (sigma_prop - current_sigma);
+  }
+
+  if (log(R::runif(0, 1)) < (ll_prop - ll_curr + log_prior_ratio)) {
     return sigma_prop;
   } else {
     return current_sigma;
@@ -145,17 +155,17 @@ double update_sigma_to_aft(const arma::vec& resid, const arma::vec& Y, const arm
 
 
 // [[Rcpp::export]]
-List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
-                      const arma::vec& Y_scale, arma::vec resid, const arma::vec& Y, const arma::vec& C,
+List update_scale_general(double xi_curr, // Current Shadow Variable for Tau
+                      const arma::vec& Y_scale, arma::vec resid, const arma::vec& Y,
                       double sd_y, double sd_prior = 10.0,
-                      int fam_code = 1) {
+                      int fam_code = 1, double df = 4.0) {
 
   // 1. Setup ESS for the shadow variable
   double nu = R::rnorm(0, sd_prior);
 
   // Initial Likelihood
   double current_scale = std::exp(xi_curr);
-  double current_ll = sstl::log_lik_aft(resid, Y, C, sd_y, fam_code);
+  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
 
   // Threshold
   double u = R::runif(0, 1);
@@ -179,7 +189,7 @@ List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     // Y_scale excludes the intercept; Y is the original response for the likelihood.
     // Since resid = Y_scale - current_scale * Z, we have (Y_scale - resid) = current_scale * Z
     resid_prop = Y_scale - (Y_scale - resid) * (scale_prop / current_scale);
-    double prop_ll = sstl::log_lik_aft(resid_prop, Y, C, sd_y, fam_code);
+    double prop_ll = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid = resid_prop;
@@ -203,14 +213,14 @@ List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
 
 
 // [[Rcpp::export]]
-List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& Y, const arma::vec& C,
+List update_intercept_to_general(double b0_curr, arma::vec resid, const arma::vec& Y,
                              double sd_y, int fam_code,
-                             double sd_prior = 10.0) {
+                             double sd_prior = 10.0, double df = 4.0) {
 
   // Current residual is assumed to be Y - b0_curr - X * beta
   double nu = R::rnorm(0, sd_prior);
 
-  double current_ll = sstl::log_lik_aft(resid, Y, C, sd_y, fam_code);
+  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
 
   double u = R::runif(0, 1);
   double log_y_thresh = current_ll + log(u);
@@ -229,7 +239,7 @@ List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& Y
 
     // Intercept updates only shift the residual by the proposed intercept change
     resid_prop = resid - (b0_prop - b0_curr);
-    double prop_ll = sstl::log_lik_aft(resid_prop, Y, C, sd_y, fam_code);
+    double prop_ll = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid = resid_prop;

@@ -2,7 +2,7 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp17)]]
 
-#include "ntl_helpers.h"
+#include "sstl_helpers.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -38,11 +38,11 @@ List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
   double a0_T = bt_c(2*p);
-  vec beta_T = ntl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
+  vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
 
   // Initialize Target Residuals
   vec resid_T = Y_T - X_T * beta_T;
-  double ll_T = ntl::log_lik_resid(resid_T, sd_y_T);
+  double ll_T = sstl::log_lik_resid(resid_T, Y_T, sd_y_T);
 
   // Initialize Source Residuals (List of vectors)
   std::vector<vec> resid_S(S);
@@ -54,11 +54,11 @@ List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
     vec w_s = bs_col.subvec(0, p-1);
     vec a_s = bs_col.subvec(p, 2*p-1);
     double a0_s = bs_col(2*p);
-    vec bias_s = ntl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code);
+    vec bias_s = sstl::get_beta(w_s, a_s, tau_S(s), a0_s, lambda_S(s), slab_code);
 
     // Residual = Y - X * (beta_T + bias)
     resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias_s);
-    ll_S_total += ntl::log_lik_resid(resid_S[s], sd_y_S(s));
+    ll_S_total += sstl::log_lik_resid(resid_S[s], Y_s_cpp[s], sd_y_S(s));
   }
 
   double current_ll_global = ll_T + ll_S_total;
@@ -102,7 +102,7 @@ List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
       vec a_prop = bt_prop.subvec(p, 2*p-1);
       double a0_prop = bt_prop(2*p);
 
-      vec beta_T_prop = ntl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code);
+      vec beta_T_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code);
 
       // --- C. GLOBAL RESIDUAL UPDATE ---
       vec delta_beta = beta_T_prop - beta_T;
@@ -119,7 +119,7 @@ List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
         vec d_sub = delta_beta.subvec(start, end);
         resid_T_prop -= X_T.cols(start, end) * d_sub;
       }
-      double ll_T_prop = ntl::log_lik_resid(resid_T_prop, sd_y_T);
+      double ll_T_prop = sstl::log_lik_resid(resid_T_prop, Y_T, sd_y_T);
 
       // 2. Update Source Residuals
       double ll_S_prop_total = 0;
@@ -139,7 +139,7 @@ List update_target_cpp(arma::vec bt_c, const arma::mat& X_T, const arma::vec& Y_
           resid_S_prop[s] -= X_s_cpp[s].cols(start, end) * d_sub;
         }
 
-        ll_S_prop_total += ntl::log_lik_resid(resid_S_prop[s], sd_y_S(s));
+        ll_S_prop_total += sstl::log_lik_resid(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s));
       }
 
       double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -194,11 +194,11 @@ List update_source_joint_cpp(arma::mat bs_c, // (2p+1) x S matrix
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    vec bias = ntl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code);
+    vec bias = sstl::calc_bias_vec(bs_c.col(s), tau_S(s), p, lambda_S(s), slab_code);
 
     // Residual = Y - X(beta_T + bias)
     resid_S[s] = Y_s_cpp[s] - X_s_cpp[s] * (beta_T + bias);
-    ll_S[s] = ntl::log_lik_resid(resid_S[s], sd_y_S(s));
+    ll_S[s] = sstl::log_lik_resid(resid_S[s], Y_s_cpp[s], sd_y_S(s));
     current_ll_total += ll_S[s];
   }
 
@@ -227,8 +227,8 @@ List update_source_joint_cpp(arma::mat bs_c, // (2p+1) x S matrix
       for (int s = 0; s < S; s++) {
         double a0_fixed = bs_c(2 * p, s);
         double lam = lambda_S(s);
-        double thresh_prob = std::pow(ntl::pnorm_custom(a0_fixed), 1.0 / lam);
-        precomputed_thresh[s] = ntl::qnorm_custom(thresh_prob);
+        double thresh_prob = std::pow(sstl::pnorm_custom(a0_fixed), 1.0 / lam);
+        precomputed_thresh[s] = sstl::qnorm_custom(thresh_prob);
       }
     }
 
@@ -251,12 +251,12 @@ List update_source_joint_cpp(arma::mat bs_c, // (2p+1) x S matrix
         if (j == 2*p) {
           // CASE 1: Global a0 update (recompute full vector)
           vec bs_col = bs_c.col(s);
-          vec bias_old = ntl::get_beta(bs_col.subvec(0, p-1),
+          vec bias_old = sstl::get_beta(bs_col.subvec(0, p-1),
                                   bs_col.subvec(p, 2*p-1), tau_S(s),
                                   bs_col(2*p), lam, slab_code);
 
           // Construct New Bias (Vector)
-          vec bias_new = ntl::get_beta(bs_col.subvec(0, p-1),
+          vec bias_new = sstl::get_beta(bs_col.subvec(0, p-1),
                                   bs_col.subvec(p, 2*p-1), tau_S(s),
                                   val_new, lam, slab_code); // Use val_new for a0
 
@@ -273,19 +273,19 @@ List update_source_joint_cpp(arma::mat bs_c, // (2p+1) x S matrix
           double thresh = precomputed_thresh[s];
 
           // 1. Beta Old
-          double beta_old_k = ntl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
+          double beta_old_k = sstl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
 
           // 2. Beta New (Swap parameter)
           double w_temp = (j < p) ? val_new : w_fixed;
           double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = ntl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
+          double beta_new_k = sstl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;
           resid_S_prop[s] -= X_s_cpp[s].col(k) * d_val;
         }
 
-        prop_ll_total += ntl::log_lik_resid(resid_S_prop[s], sd_y_S(s));
+        prop_ll_total += sstl::log_lik_resid(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s));
       }
 
       if(prop_ll_total > log_y_threshold) {
@@ -321,6 +321,14 @@ double update_target_scale_cpp(double xi_t_curr, // Scalar shadow variable
   int p = (bt_c.n_elem - 1) / 2;
   int S = X_s_list.size();
 
+  // Reference original numeric responses without copying their data.
+  std::vector<arma::vec> Y_s_cpp;
+  Y_s_cpp.reserve(S);
+  for (int s = 0; s < S; ++s) {
+    Rcpp::NumericVector Y_s = Y_s_list[s];
+    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
+  }
+
   // 1. Setup Independent Gaussian Prior (Scalar)
   double nu = R::rnorm(0, sd_0);
 
@@ -330,7 +338,7 @@ double update_target_scale_cpp(double xi_t_curr, // Scalar shadow variable
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
   double a0_T = bt_c(2*p);
-  vec beta_T_raw = ntl::get_beta(w_T, a_T, 1.0, a0_T, lambda_T, slab_code);
+  vec beta_T_raw = sstl::get_beta(w_T, a_T, 1.0, a0_T, lambda_T, slab_code);
 
   vec Z_T = X_T * beta_T_raw;       // Target Direction
   vec resid_fixed_T = Y_T;          // Target Fixed Residual (Y - 0)
@@ -345,7 +353,7 @@ double update_target_scale_cpp(double xi_t_curr, // Scalar shadow variable
   // Calculate Initial Target LL
   // Resid = Y - tau * Z
   vec resid = resid_fixed_T - tau_curr * Z_T;
-  current_ll += ntl::log_lik_resid(resid, sd_y_T);
+  current_ll += sstl::log_lik_resid(resid, Y_T, sd_y_T);
 
   // Calculate Initial Source LLs
   for(int s=0; s<S; s++) {
@@ -354,12 +362,12 @@ double update_target_scale_cpp(double xi_t_curr, // Scalar shadow variable
     vec bs_col = bs_c.col(s);
 
     // Calculate Source Bias (Fixed during target scale update)
-    vec bias_s = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
+    vec bias_s = sstl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
                           tau_S(s), bs_col(2*p), lambda_S(s), slab_code);
     resid_fixed_s_list[s] = Y_s - X_s * bias_s; // Fixed part of residual: Y_s - X_s * bias_s
     Z_s_list[s] = X_s * beta_T_raw; // Variable direction: X_s * beta_T_raw
     resid = resid_fixed_s_list[s] - tau_curr * Z_s_list[s];
-    current_ll += ntl::log_lik_resid(resid, sd_y_S(s)); // Current Source LL
+    current_ll += sstl::log_lik_resid(resid, Y_s_cpp[s], sd_y_S(s)); // Current Source LL
   }
 
   // 3. ESS Loop
@@ -382,12 +390,12 @@ double update_target_scale_cpp(double xi_t_curr, // Scalar shadow variable
 
     // Target LL
     resid = resid_fixed_T - tau_prop * Z_T;
-    prop_ll += ntl::log_lik_resid(resid, sd_y_T);
+    prop_ll += sstl::log_lik_resid(resid, Y_T, sd_y_T);
 
     // Source LLs
     for(int s=0; s<S; s++) {
       resid = resid_fixed_s_list[s] - tau_prop * Z_s_list[s];
-      prop_ll += ntl::log_lik_resid(resid, sd_y_S(s));
+      prop_ll += sstl::log_lik_resid(resid, Y_s_cpp[s], sd_y_S(s));
     }
 
     if(prop_ll > log_y_thresh) {
@@ -418,6 +426,14 @@ arma::vec update_source_scales_cpp(arma::vec xi_s_curr, // Size S shadow variabl
                              int slab_code) {
 
   int S = xi_s_curr.n_elem;
+
+  // Reference original numeric responses without copying their data.
+  std::vector<arma::vec> Y_s_cpp;
+  Y_s_cpp.reserve(S);
+  for (int s = 0; s < S; ++s) {
+    Rcpp::NumericVector Y_s = Y_s_list[s];
+    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
+  }
   int p = (bs_c.n_rows - 1) / 2;
 
   // 1. Setup Independent Spherical Gaussian Prior
@@ -438,12 +454,12 @@ arma::vec update_source_scales_cpp(arma::vec xi_s_curr, // Size S shadow variabl
     vec bs_col = bs_c.col(s);
 
     // Calculate unscaled bias
-    vec bias_init = ntl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
+    vec bias_init = sstl::get_beta(bs_col.subvec(0, p-1), bs_col.subvec(p, 2*p-1),
                              1.0, bs_col(2*p), lambda_S(s), slab_code);
     Z_list[s] = X * bias_init; // Calculate linear predictor bias
     resid_fixed_list[s] = Y - X * beta_T; // Calculate fixed residual from target pars
     vec resid = resid_fixed_list[s] - tau_curr(s) * Z_list[s];
-    current_ll += ntl::log_lik_resid(resid, sd_y_S(s)); // Current Likelihood
+    current_ll += sstl::log_lik_resid(resid, Y_s_cpp[s], sd_y_S(s)); // Current Likelihood
   }
 
   // 3. ESS Loop
@@ -466,7 +482,7 @@ arma::vec update_source_scales_cpp(arma::vec xi_s_curr, // Size S shadow variabl
     double prop_ll = 0;
     for(int s=0; s<S; s++) {
       vec resid = resid_fixed_list[s] - tau_prop(s) * Z_list[s];
-      prop_ll += ntl::log_lik_resid(resid, sd_y_S(s));
+      prop_ll += sstl::log_lik_resid(resid, Y_s_cpp[s], sd_y_S(s));
     }
 
     if(prop_ll > log_y_thresh) {

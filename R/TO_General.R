@@ -1,36 +1,42 @@
-#' ESS-within-Gibbs sampler for single source Bayesian HD AFT models
+#' ESS-within-Gibbs sampler for target-only Bayesian high-dimensional uncensored regression
 #'
 #' Runs elliptical slice sampling updates for target parameters.
 #'
 #' @param X Design matrix.
 #' @param Y Response.
-#' @param C Observation indicator.
 #' @param b.c Initial states for latent parameters.
 #' @param xi shadow variable for slab scale parameter.
-#' @param sd_y scale variable for noise.
+#' @param sd_y Initial outcome standard deviation for 'Gaussian' or scale for 'Student-t'. For 'Negative-binomial' and 'Gamma', this is the positive shape; for 'Beta', the positive precision. Defaults to 1. Fixed at 1 and unused for 'Logistic' and 'Poisson'.
+#' @param sd.0 Prior standard deviations of the latent parameters.
 #' @param b0 Initial value for the intercept term, default is 0.
 #' @param intercept Whether to estimate the intercept term in the MCMC algorithm, default is TRUE.
-#' @param lambda Threshold parameter.
+#' @param lambda Threshold parameter; defaults to the square root of the number of predictors, sqrt(p).
 #' @param N Number of MCMC iterations.
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
-#' @param family Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.
-#' @param slab Specification of slab distribution, one of 'exp', 'poly', 'nlp', 'guassian'. Default is 'nlp'.
+#' @param family Outcome distribution: 'Gaussian', 'Logistic' (binary 0/1), 'Student-t', 'Poisson' or 'Negative-binomial' (nonnegative integer counts, log link), 'Gamma' (positive response, log link), or 'Beta' (response strictly between 0 and 1, logit link). Case-insensitive; default is 'Gaussian'.
+#' @param df Fixed positive degrees of freedom for 'Student-t', default is 4. Ignored for other families.
+#' @param slab Slab transformation: 'exp', 'poly', 'nlp1', 'nlp2', or 'guassian'.
 #' @param verbose Verbosity flag.
 #' @param debug Optional returning of MCMC runs other than the coefficient itself.
-#' @return A list containing MCMC draws and diagnostics.
+#' @details Shape/precision is updated by log-scale Metropolis-Hastings with proposal standard deviation 0.3 for these three families. The negative-binomial shape has an inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta precision have Gamma(shape = 0.01, rate = 0.01) priors.
+#' @return A list containing MCMC draws and diagnostics. mc_sigma stores the outcome scale, shape, or precision according to family.
 #' @export
-ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
+ESS_Gibbs_General <- function(X,Y,b.c=NULL,
                           sd.0=NULL, lambda=NULL,
                           xi=NULL, sd_y=NULL,
                           b0=NULL, intercept=TRUE,
                           N=5000, S.max=100, block_size=1,
-                          family="Weibull", slab = "exp",
+                          family="Gaussian", df=4, slab = "exp",
                           verbose=1, debug=F) {
 
-  fam_map <- c("weibull" = 1, "loglogistic" = 2, "lognormal" = 3)
+  fam_map <- c("gaussian" = 1, "logistic" = 2, "student-t" = 3, "poisson" = 4, "negative-binomial" = 5, "gamma" = 6, "beta" = 7)
   fam_code <- fam_map[tolower(family)]
-  if(is.na(fam_code)) stop("Family must be 'weibull', 'loglogistic', or 'lognormal'")
+  if(is.na(fam_code)) stop("Family must be 'Gaussian', 'Logistic', 'Student-t', 'Poisson', 'Negative-binomial', 'Gamma', or 'Beta'")
+
+  if (fam_code == 3 && (length(df) != 1 || is.na(df) || df <= 0)) {
+    stop("df must be a positive number for 'Student-t'.")
+  }
 
   slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4, "guassian" = 5)
   slab_code <- slab_map[tolower(slab)]
@@ -39,9 +45,24 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   # Type Safety
   X <- as.matrix(X)
   Y <- as.numeric(Y)
-  C <- as.numeric(C)
+
+  if (fam_code == 2 && any(!Y %in% c(0, 1))) {
+    stop("Y must contain only 0 and 1 for 'Logistic'.")
+  }
+
+  if (fam_code %in% c(4, 5) && any(!is.finite(Y) | Y < 0 | Y != floor(Y))) {
+    stop("Y must contain only nonnegative integer counts for 'Poisson' or 'Negative-binomial'.")
+  }
+
+  if (fam_code == 6 && any(!is.finite(Y) | Y <= 0)) {
+    stop("Y must contain only positive values for 'Gamma'.")
+  }
+  if (fam_code == 7 && any(!is.finite(Y) | Y <= 0 | Y >= 1)) {
+    stop("Y must contain only values strictly between 0 and 1 for 'Beta'.")
+  }
 
   p = ncol(X)
+  if (is.null(lambda)) lambda = sqrt(p)
   if (is.null(sd.0)) sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
   if (is.null(b.c)) b.c = rnorm(2*p+1,0,sd.0)
   id <- lapply(seq(1, p, by = block_size), function(start_idx) {
@@ -65,7 +86,10 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   }
   MC.beta = matrix(NA, N, p)
   mc.sigma = rep(NA,N)
-  if (is.null(sd_y)) sd_y = 1
+  if (fam_code %in% c(2, 4) || is.null(sd_y)) sd_y = 1
+  if (fam_code %in% 5:7 && (length(sd_y) != 1 || !is.finite(sd_y) || sd_y <= 0)) {
+    stop("sd_y must be a positive number for shape/precision.")
+  }
   if (is.null(xi)) xi = 1
   if (is.null(b0)) b0 = 0
   if (intercept) MC.b0 = rep(NA, N)
@@ -76,44 +100,44 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   if (verbose==1) pb <- txtProgressBar(min = 0, max = N, style = 3)
   for(i in 1:N){                         #  loop over iteration
     if (intercept) {
-      int_res <- update_intercept_to_aft(b0_curr = b0,
+      int_res <- update_intercept_to_general(b0_curr = b0,
                                          resid = resid, Y = Y,
-                                         C = C,
                                          sd_y = sd_y,
-                                         fam_code = fam_code,
+                                         fam_code = fam_code, df=df,
                                          sd_prior = 2.0)
       b0 <- int_res$b0
       resid <- int_res$resid
     }
 
-    cpp_res <- update_blocks_aft(b_c = b.c,
+    cpp_res <- update_blocks_general(b_c = b.c,
                                  resid = resid, Y = Y,
-                                 X = X, C = C,
+                                 X = X,
                                  id = id, sd_0 = sd.0,
                                  lambda = lambda, tau = exp(xi),
                                  sd_y = sd_y,
                                  S_max = S.max,
-                                 fam_code = fam_code,
+                                 fam_code = fam_code, df=df,
                                  slab_code = slab_code)
 
     b.c <- cpp_res$b_c
     resid <- cpp_res$resid
     if (debug) N.s[i, ] <- cpp_res$N_s
 
-    scale_res <- update_scale_aft(xi_curr = xi,
-                                  Y_scale = Y - b0, resid = resid, Y = Y, C = C,
+    scale_res <- update_scale_general(xi_curr = xi,
+                                  Y_scale = Y - b0, resid = resid, Y = Y,
                                   sd_y = sd_y,
                                   sd_prior = 2.0, # Prior width for shadow var
-                                  fam_code = fam_code)
+                                  fam_code = fam_code, df=df)
     xi <- scale_res$xi
     resid <- scale_res$resid
 
-    # update scale parameter
-    sd_y <- update_sigma_to_aft(resid = resid, Y = Y,
-                                C = C,
-                                current_sigma = sd_y,
-                                fam_code=fam_code,
-                                step_size = 0.1) # Tune step_size for ~30-40% acceptance
+    # update outcome scale, shape, or precision
+    if (!fam_code %in% c(2, 4)) {
+      sd_y <- update_sigma_to_general(resid = resid, Y = Y,
+                                  current_sigma = sd_y,
+                                  fam_code=fam_code, df=df,
+                                  step_size = if (fam_code %in% 5:7) 0.3 else 0.1) # Tune step_size for ~30-40% acceptance
+    }
 
     if (debug){
       mc.b[i, ]    <- b.c                  # Store the sample
@@ -144,7 +168,8 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
 #'
 #' Run a stochastic EM algorithm
 #'
-#' @inheritParams ESS_Gibbs_AFT
+#' @inheritParams ESS_Gibbs_General
+#' @param lambda_init Initial threshold parameter; defaults to the square root of the number of predictors, sqrt(p).
 #' @param gamma_power Robbins–Monro step-size exponent for SAEM updates.
 #' @param lr Learning rate for lambda updates.
 #' @param K_block Block size (iterations) per SAEM update.
@@ -154,13 +179,13 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
 #' @return A list containing the lambda trajectory, final threshold, and final
 #'   state (b_c, xi, sd_y, and b0_final when an intercept is estimated).
 #' @export
-EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
+EB_SAEM_General <- function(X,Y,N=5000, burn=1000,
                         S.max=50, block_size=1,
-                        lambda_init = 9,
+                        lambda_init = NULL,
                         gamma_power = 0.9,
                         lr = 0.1,
                         K_block = 10,
-                        schedule = 0.5, family = 'Weibull', slab = "exp",
+                        schedule = 0.5, family="Gaussian", df=4, slab = "exp",
                         b0=NULL, intercept=FALSE,
                         optimizer = c("legacy", "adagrad"),
                         adagrad_eps = 1e-8,
@@ -173,17 +198,18 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
   optimizer = match.arg(optimizer)
 
   # Type Safety
-  X <- as.matrix(X); Y <- as.numeric(Y); C <- as.numeric(C)
+  X <- as.matrix(X); Y <- as.numeric(Y)
   p = ncol(X)
+  if (is.null(lambda_init)) lambda_init = sqrt(p)
   n_blocks = floor(N / K_block)
 
   # burn in
-  res = ESS_Gibbs_AFT(X=X, Y=Y, C=C,
+  res = ESS_Gibbs_General(X=X, Y=Y,
                       lambda=lambda_init,
                       b0=b0, intercept=intercept,
                       N=burn, S.max=S.max,
                       block_size=block_size,
-                      family=family, slab=slab,
+                      family=family, df=df, slab=slab,
                       verbose=0, debug=T)
 
   # Initialize the parameters
@@ -206,13 +232,13 @@ EB_SAEM_AFT <- function(X,Y,C,N=5000, burn=1000,
   if (verbose==1) pb <- txtProgressBar(min = 0, max = n_blocks, style = 3)
   for(t_block in seq_len(n_blocks)){                         #  loop over iteration
 
-    res <- ESS_Gibbs_AFT(X=X, Y=Y, C=C,
+    res <- ESS_Gibbs_General(X=X, Y=Y,
                          b.c=b.c, lambda=lambda,
                          xi=xi, sd_y=sd_y,
                          b0=b0, intercept=intercept,
                          N=K_block, S.max=S.max,
                          block_size=block_size,
-                         family=family, slab=slab,
+                         family=family, df=df, slab=slab,
                          verbose=0, debug=T)
 
     b.c  <- res$mc_b[K_block, ]

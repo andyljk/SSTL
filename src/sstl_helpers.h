@@ -1,7 +1,7 @@
 #pragma once
 #include <RcppArmadillo.h>
 
-namespace ntl {
+namespace sstl {
 
 // keep these inline to avoid duplicate symbol linker issues
 inline double qnorm_custom(double p) { return R::qnorm(p, 0.0, 1.0, 1, 0); }
@@ -23,7 +23,7 @@ inline arma::vec T_log_cpp(arma::vec x, double k=10.0) {
   return out;
 }
 
-// 2.1 Helper: The Neuronized Transformation H(x) = sign(x)*exp(x^2)
+// NLP1 slab: H(w) = phi * sign(w) * (exp(d * w^2) - 1)^(1 / (2 * d)).
 inline arma::vec H_n1_cpp(arma::vec w, double phi=2.0, double d=2.0) {
   return phi * arma::sign(w) % arma::pow(arma::expm1(d * arma::square(w)), 0.5/d);
 }
@@ -32,10 +32,10 @@ inline arma::vec T_n2_cpp(arma::vec x) {
   arma::uword n = x.n_elem;
   arma::vec out(n);
   for(arma::uword i = 0; i < n; ++i) {out[i] = (x[i] > 0.0);}
-  return out; // 1.0 / (1.0 + arma::exp(-20.0 * x));
+  return out;
 }
 
-// 2.1 Helper: The Neuronized Transformation H(x) = sign(x)*exp(x^2)
+// NLP2 slab: H(w) = phi * sign(w) * sqrt(abs(w)) * exp(w^2 / 2).
 inline arma::vec H_n2_cpp(arma::vec w, double phi=2.0) {
   return phi * arma::sign(w) % arma::sqrt(arma::abs(w)) % arma::exp(0.5 * arma::square(w));
 }
@@ -44,7 +44,7 @@ inline arma::vec T_c_cpp(arma::vec x) {
   return arma::max(x, zeros(size(x)));
 }
 
-// 2.1 Helper: The Neuronized Transformation H(x) = sign(x)*exp(x^2)
+// Polynomial-tail slab: H(w) = sign(w) * exp(w^2 / 2).
 inline arma::vec H_c_cpp(arma::vec w) {
   return arma::sign(w) % arma::exp(0.5 * arma::square(w));
 }
@@ -53,7 +53,7 @@ inline arma::vec T_l_cpp(arma::vec x) {
   return arma::max(x, zeros(size(x)));
 }
 
-// 2.1 Helper: The Neuronized Transformation H(x) = sign(x)*exp(x^2)
+// Identity weight transform H(w) = w for the exponential-tail and Gaussian slabs.
 inline arma::vec H_l_cpp(arma::vec w) {
   return w;
 }
@@ -103,7 +103,7 @@ inline arma::vec get_beta(const arma::vec& w, const arma::vec& a, double tau,
                           double a0, double lambda, int slab_code, bool approx=false, double k_apx=10.0) {
   double threshold = threshold_from_a0(a0, lambda);
 
-  // beta = w * T(a - threshold)
+  // beta = tau * H(w) * T(a - threshold), element-wise.
   if (slab_code==1){
     return tau * H_l_cpp(w) % T_l_cpp(a - threshold);
   }else if (slab_code==2){
@@ -131,7 +131,7 @@ inline arma::vec get_beta_group(const arma::vec& w, const arma::vec& a_group,
   return get_beta(w, a_expanded, tau, a0, lambda, slab_code, approx, k_apx);
 }
 
-// --- Define Scalar Beta Calculation Lambda ---
+// Scalar coefficient: tau_s * H(w_val) * T(a_val - thresh).
 inline double calc_scalar_beta(double w_val, double a_val, double thresh,
                                double tau_s, int slab_code,
                                bool approx = false, double k_apx = 10.0) {
@@ -155,13 +155,67 @@ inline double calc_scalar_beta(double w_val, double a_val, double thresh,
   return tau_s * h_w * act;
 };
 
-inline double log_lik_resid(const arma::vec& resid, double sd_y) {
+inline double log_lik_resid(const arma::vec& resid, const arma::vec& Y, double sd_y) {
   double n = resid.n_elem;
   double rss = sum(square(resid));
   return -0.5 * n * log(2 * M_PI) - n * log(sd_y) - 0.5 * rss / (sd_y * sd_y);
 }
 
-inline double log_lik_aft(const arma::vec& resid, const arma::vec& C, double sd_y, int fam_code) {
+inline double log_lik_general(const arma::vec& resid, const arma::vec& Y, double sd_y, int fam_code, double df = 4.0) {
+  double ll = 0.0;
+  int n = resid.n_elem;
+  const double* r_ptr = resid.memptr();
+  const double* y_ptr = Y.memptr();
+
+  if (fam_code == 1) { // --- Gaussian ---
+    return log_lik_resid(resid, Y, sd_y);
+
+  } else if (fam_code == 2) { // --- Bernoulli Logistic (Y = 0 or 1) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      double zi = (1.0 - 2.0 * y_ptr[i]) * eta;
+      ll -= std::max(zi, 0.0) + std::log1p(std::exp(-std::abs(zi)));
+    }
+
+  } else if (fam_code == 3) { // --- Student-t (sd_y is the scale) ---
+    double inv_sd = 1.0 / sd_y;
+    double log_sd = std::log(sd_y);
+    for(int i = 0; i < n; ++i) {
+      double zi = r_ptr[i] * inv_sd;
+      ll += R::dt(zi, df, 1) - log_sd;
+    }
+
+  } else if (fam_code == 4) { // --- Poisson (log link) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      ll += y_ptr[i] * eta - std::exp(eta) - std::lgamma(y_ptr[i] + 1.0);
+    }
+
+  } else if (fam_code == 5) { // --- Negative Binomial (log link, sd_y is the shape) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      ll += R::dnbinom_mu(y_ptr[i], sd_y, std::exp(eta), 1);
+    }
+
+  } else if (fam_code == 6) { // --- Gamma (log link, sd_y is the shape) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      ll += R::dgamma(y_ptr[i], sd_y, std::exp(eta) / sd_y, 1);
+    }
+
+  } else if (fam_code == 7) { // --- Beta (logit link, sd_y is the precision) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      double mu = R::plogis(eta, 0.0, 1.0, 1, 0);
+      double one_minus_mu = R::plogis(eta, 0.0, 1.0, 0, 0);
+      ll += R::dbeta(y_ptr[i], mu * sd_y, one_minus_mu * sd_y, 1);
+    }
+  }
+
+  return ll;
+}
+
+inline double log_lik_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C, double sd_y, int fam_code) {
   double ll = 0.0;
   double inv_sd = 1.0 / sd_y;
   double log_sd = std::log(sd_y);
@@ -219,4 +273,4 @@ inline arma::vec calc_bias_vec_group(const arma::vec& bs_col, double tau_s,
   return get_beta_group(w, a, group_map, tau_s, a0, lambda, slab_code, approx, k_apx);
 }
 
-} // namespace ntl
+} // namespace sstl
