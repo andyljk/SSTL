@@ -15,7 +15,7 @@
 #' @param S.max Maximum slice iterations per update.
 #' @param block_size Block size for updates.
 #' @param family Specification of outcome model, one of 'Weibull', 'Lognormal', 'Loglogistic'. Default is 'Weibull'.
-#' @param slab Specification of slab distribution, one of 'exp', 'poly', 'nlp', 'guassian'. Default is 'nlp'.
+#' @param slab Specification of slab distribution, one of 'exp', 'poly', 'nlp', 'guassian'. Default is 'exp'.
 #' @param verbose Verbosity flag.
 #' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @return A list containing MCMC draws and diagnostics.
@@ -32,9 +32,9 @@ ESS_Gibbs_AFT <- function(X,Y,C,b.c=NULL,
   fam_code <- fam_map[tolower(family)]
   if(is.na(fam_code)) stop("Family must be 'weibull', 'loglogistic', or 'lognormal'")
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4, "guassian" = 5)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4, "guassian" = 5)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp1/nlp2', or 'guassian'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp', or 'guassian'")
 
   # Type Safety
   X <- as.matrix(X)

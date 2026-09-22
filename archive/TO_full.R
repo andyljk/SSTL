@@ -20,9 +20,9 @@
 ESS_Gibbs <- function(X,Y, b.c=NULL, tau=NULL, sd_y=NULL, lambda=NULL,
                       N=5000, block_size=1, S.max=500, slab = "exp", verbose=1, debug=F) {
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp'")
 
   p = ncol(X)
   sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))
@@ -122,9 +122,9 @@ ESS_Gibbs_SAEM <- function(X,Y,b.c=NULL,sd.0=NULL, lambda=NULL, tau=NULL,
                            schedule = 0.5, slab = "poly",
                            verbose=1) {
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp'")
 
   p = ncol(X)
   if (is.null(sd.0)) sd.0  = sqrt(c(rep(1, p), rep(1,p), 1))

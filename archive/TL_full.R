@@ -26,9 +26,9 @@ ESS_Gibbs_TL <- function(X_T,Y_T,X_s,Y_s,
                          N=5000, S.max=500, block_size=1, slab = "exp",
                          verbose=1, debug=F) {
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp'")
 
   # b_T, b_s:     Current state (vector) for par of interest and source study biases
   # LL:  Function to compute log-likelihood
@@ -193,9 +193,9 @@ EB_Gibbs_SAEM = function(X_T,Y_T,X_s,Y_s,
                          schedule=0.5, slab = "exp",
                          verbose=1){
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp1/nlp2'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'slab', or 'nlp'")
 
   # b_T, b_s:     Current state (vector) for par of interest and source study biases
   # LL:  Function to compute log-likelihood

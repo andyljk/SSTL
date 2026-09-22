@@ -38,9 +38,9 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
   fam_code <- fam_map[tolower(family)]
   if(is.na(fam_code)) stop("Family must be 'weibull', 'loglogistic', or 'lognormal'")
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4, "guassian" = 5)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4, "guassian" = 5)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp1/nlp2', or 'guassian'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp', or 'guassian'")
 
   # Type Safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T); C_T <- as.numeric(C_T)

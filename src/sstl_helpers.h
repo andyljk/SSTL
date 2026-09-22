@@ -23,7 +23,7 @@ inline arma::vec T_log_cpp(arma::vec x, double k=10.0) {
   return out;
 }
 
-// NLP1 slab: H(w) = phi * sign(w) * (exp(d * w^2) - 1)^(1 / (2 * d)).
+// NLP slab: H(w) = phi * sign(w) * (exp(d * w^2) - 1)^(1 / (2 * d)).
 inline arma::vec H_n1_cpp(arma::vec w, double phi=2.0, double d=2.0) {
   return phi * arma::sign(w) % arma::pow(arma::expm1(d * arma::square(w)), 0.5/d);
 }

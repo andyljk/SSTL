@@ -16,7 +16,7 @@
 #' @param block_size Block size for updates.
 #' @param family Outcome distribution: 'Gaussian', 'Logistic' (binary 0/1), 'Student-t', 'Poisson' or 'Negative-binomial' (nonnegative integer counts, log link), 'Gamma' (positive response, log link), or 'Beta' (response strictly between 0 and 1, logit link). Case-insensitive; default is 'Gaussian'.
 #' @param df Fixed positive degrees of freedom for 'Student-t', default is 4. Ignored for other families.
-#' @param slab Slab transformation: 'exp', 'poly', 'nlp1', 'nlp2', or 'guassian'.
+#' @param slab Slab transformation: 'exp', 'poly', 'nlp', or 'guassian'.
 #' @param verbose Verbosity flag.
 #' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @details Shape/precision is updated by log-scale Metropolis-Hastings with proposal standard deviation 0.3 for these three families. The negative-binomial shape has an inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta precision have Gamma(shape = 0.01, rate = 0.01) priors.
@@ -38,9 +38,9 @@ ESS_Gibbs_General <- function(X,Y,b.c=NULL,
     stop("df must be a positive number for 'Student-t'.")
   }
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4, "guassian" = 5)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4, "guassian" = 5)
   slab_code <- slab_map[tolower(slab)]
-  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp1/nlp2', or 'guassian'")
+  if(is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp', or 'guassian'")
 
   # Type Safety
   X <- as.matrix(X)

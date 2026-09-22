@@ -51,9 +51,7 @@ List update_target_group_general(arma::vec bt_c,
                              const arma::vec& sd_y_S,
                              int S_max,
                              int fam_code,
-                             int slab_code,
-                             bool approx = false,
-                             double k_apx = 10.0, double df = 4.0) {
+                             int slab_code, double df = 4.0) {
   int p = X_T.n_cols;
   int S = X_S_list.size();
   int G = id.size();
@@ -74,7 +72,7 @@ List update_target_group_general(arma::vec bt_c,
   double a0_T = bt_c(p + G);
   double threshold_T = sstl::threshold_from_a0(a0_T, lambda_T);
   vec beta_T = sstl::get_beta_group(w_T, a_T, group_map, tau, a0_T, lambda_T,
-                                   slab_code, approx, k_apx);
+                                   slab_code);
 
   double current_ll_global = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
   for (int s = 0; s < S; ++s) {
@@ -96,13 +94,13 @@ List update_target_group_general(arma::vec bt_c,
     double theta_max = theta;
     int n_s = 0;
 
-    double act_old = sstl::activation_scalar(f_curr, threshold_T, slab_code, approx, k_apx);
+    double act_old = sstl::activation_scalar(f_curr, threshold_T, slab_code);
     vec h_group = sstl::slab_weight_vec(w_T.elem(affected_cols), slab_code);
 
     while (n_s < S_max) {
       ++n_s;
       double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
-      double act_new = sstl::activation_scalar(f_prop, threshold_T, slab_code, approx, k_apx);
+      double act_new = sstl::activation_scalar(f_prop, threshold_T, slab_code);
       vec delta_beta = tau * h_group * (act_new - act_old);
 
       vec resid_T_prop = resid_T - X_T.cols(affected_cols) * delta_beta;
@@ -149,9 +147,9 @@ List update_target_group_general(arma::vec bt_c,
         double w_prop = w_curr * std::cos(theta_w) + nu_w * std::sin(theta_w);
 
         double beta_old = sstl::calc_scalar_beta(w_curr, a_T(g), threshold_T, tau,
-                                                slab_code, approx, k_apx);
+                                                slab_code);
         double beta_new = sstl::calc_scalar_beta(w_prop, a_T(g), threshold_T, tau,
-                                                slab_code, approx, k_apx);
+                                                slab_code);
         double delta_beta = beta_new - beta_old;
 
         vec resid_T_prop = resid_T - X_T.col(j) * delta_beta;
@@ -197,7 +195,7 @@ List update_target_group_general(arma::vec bt_c,
     ++n_s;
     double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
     vec beta_T_prop = sstl::get_beta_group(w_T, a_T, group_map, tau, f_prop, lambda_T,
-                                          slab_code, approx, k_apx);
+                                          slab_code);
     vec delta_beta = beta_T_prop - beta_T;
 
     vec resid_T_prop = resid_T - X_T * delta_beta;
@@ -249,9 +247,7 @@ List update_source_joint_group_general(arma::mat bs_c,
                                    const arma::vec& sd_y_S,
                                    int S_max,
                                    int fam_code,
-                                   int slab_code,
-                                   bool approx = false,
-                                   double k_apx = 10.0, double df = 4.0) {
+                                   int slab_code, double df = 4.0) {
   int p = group_map.size();
   int S = bs_c.n_cols;
   int G = id.size();
@@ -296,8 +292,8 @@ List update_source_joint_group_general(arma::mat bs_c,
       std::vector<vec> resid_S_prop(S);
       for (int s = 0; s < S; ++s) {
         double thresh_s = sstl::threshold_from_a0(bs_c(idx_a0, s), lambda_S(s));
-        double act_old = sstl::activation_scalar(f_curr(s), thresh_s, slab_code, approx, k_apx);
-        double act_new = sstl::activation_scalar(f_prop_row(s), thresh_s, slab_code, approx, k_apx);
+        double act_old = sstl::activation_scalar(f_curr(s), thresh_s, slab_code);
+        double act_new = sstl::activation_scalar(f_prop_row(s), thresh_s, slab_code);
         vec w_vec = bs_c.col(s).subvec(0, p - 1);
         vec h_group = sstl::slab_weight_vec(w_vec.elem(affected_cols), slab_code);
         vec delta_beta = tau_S(s) * h_group * (act_new - act_old);
@@ -341,9 +337,9 @@ List update_source_joint_group_general(arma::mat bs_c,
           double thresh_s = sstl::threshold_from_a0(bs_c(idx_a0, s), lambda_S(s));
           double a_val = bs_c(idx_a, s);
           double beta_old = sstl::calc_scalar_beta(w_curr(s), a_val, thresh_s, tau_S(s),
-                                                  slab_code, approx, k_apx);
+                                                  slab_code);
           double beta_new = sstl::calc_scalar_beta(w_prop_row(s), a_val, thresh_s, tau_S(s),
-                                                  slab_code, approx, k_apx);
+                                                  slab_code);
           double delta_beta = beta_new - beta_old;
 
           resid_S_prop[s] = resid_S[s] - X_s_cpp[s].col(j) * delta_beta;
@@ -383,10 +379,10 @@ List update_source_joint_group_general(arma::mat bs_c,
     for (int s = 0; s < S; ++s) {
       vec bs_col = bs_c.col(s);
       vec bias_old = sstl::calc_bias_vec_group(bs_col, tau_S(s), group_map, lambda_S(s),
-                                              slab_code, approx, k_apx);
+                                              slab_code);
       bs_col(idx_a0) = f_prop_row(s);
       vec bias_new = sstl::calc_bias_vec_group(bs_col, tau_S(s), group_map, lambda_S(s),
-                                              slab_code, approx, k_apx);
+                                              slab_code);
       resid_S_prop[s] = resid_S[s] - X_s_cpp[s] * (bias_new - bias_old);
       prop_ll_total += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }

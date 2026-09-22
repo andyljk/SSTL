@@ -18,7 +18,7 @@
 #' @param block_size Block size for updates.
 #' @param family Outcome distribution: 'Gaussian', 'Logistic' (binary 0/1), 'Student-t', or 'Poisson' (nonnegative integer counts, log link). Case-insensitive; default is 'Gaussian'.
 #' @param df Fixed positive degrees of freedom for 'Student-t', default is 4. Ignored for other families.
-#' @param slab Slab transformation: 'exp', 'poly', 'nlp1', 'nlp2', or 'guassian'.
+#' @param slab Slab transformation: 'exp', 'poly', 'nlp', or 'guassian'.
 #' @param verbose Verbosity flag.
 #' @param debug Optional returning of MCMC runs other than the coefficient itself.
 #' @return A list containing MCMC draws and diagnostics.
@@ -42,9 +42,9 @@ ESS_Gibbs_TL_Group_General <- function(X_T, Y_T,
     stop("df must be a positive number for 'Student-t'.")
   }
 
-  slab_map <- c("exp" = 1, "poly" = 2, "nlp1" = 3, "nlp2" = 4, "guassian" = 5)
+  slab_map <- c("exp" = 1, "poly" = 2, "nlp" = 3, "nlp2" = 4, "guassian" = 5)
   slab_code <- slab_map[tolower(slab)]
-  if (is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp1/nlp2', or 'guassian'")
+  if (is.na(slab_code)) stop("Slab must be 'exp', 'poly', 'nlp', or 'guassian'")
 
   X_T <- as.matrix(X_T)
   Y_T <- as.numeric(Y_T)

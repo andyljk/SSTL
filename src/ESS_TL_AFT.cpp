@@ -19,8 +19,7 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
                        const Rcpp::List& id, const arma::vec& sd_T,
                        double lambda_T, double tau,
                        double sd_y_T, const arma::vec& sd_y_S,
-                       int S_max, int fam_code, int slab_code,
-                       bool approx = false, double k_apx = 10.0) {
+                       int S_max, int fam_code, int slab_code) {
 
   int p = X_T.n_cols;
   int S = X_S_list.size();
@@ -47,7 +46,7 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
   vec w_T = bt_c.subvec(0, p-1);
   vec a_T = bt_c.subvec(p, 2*p-1);
   double a0_T = bt_c(2*p);
-  vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code, approx, k_apx);
+  vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
 
   double ll_T = sstl::log_lik_aft(resid_T, Y_T, C_T, sd_y_T, fam_code);
 
@@ -97,7 +96,7 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
       vec a_prop = bt_prop.subvec(p, 2*p-1);
       double a0_prop = bt_prop(2*p);
 
-      vec beta_T_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code, approx, k_apx);
+      vec beta_T_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code);
 
       // --- C. GLOBAL RESIDUAL UPDATE ---
       vec delta_beta = beta_T_prop - beta_T;
@@ -176,8 +175,7 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
                              const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
                              const arma::vec& lambda_S, const arma::vec& tau_S,
                              const arma::vec& sd_y_S,
-                             int S_max, int fam_code, int slab_code,
-                             bool approx = false, double k_apx = 10.0) {
+                             int S_max, int fam_code, int slab_code) {
 
   int p = (bs_c.n_rows - 1) / 2;
   int S = bs_c.n_cols;
@@ -257,14 +255,12 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           vec bs_col = bs_c.col(s);
           vec bias_old = sstl::get_beta(bs_col.subvec(0, p-1),
                                        bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       bs_col(2*p), lam, slab_code,
-                                       approx, k_apx);
+                                       bs_col(2*p), lam, slab_code);
 
           // Construct New Bias (Vector)
           vec bias_new = sstl::get_beta(bs_col.subvec(0, p-1),
                                        bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       val_new, lam, slab_code,
-                                       approx, k_apx); // Use val_new for a0
+                                       val_new, lam, slab_code); // Use val_new for a0
 
           vec diff = bias_new - bias_old;
           resid_S_prop[s] -= X_s_cpp[s] * diff;
@@ -279,12 +275,12 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
           double thresh = precomputed_thresh[s];
 
           // 1. Beta Old
-          double beta_old_k = sstl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code, approx, k_apx);
+          double beta_old_k = sstl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
 
           // 2. Beta New (Swap parameter)
           double w_temp = (j < p) ? val_new : w_fixed;
           double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = sstl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code, approx, k_apx);
+          double beta_new_k = sstl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
 
           // 3. Update Residual
           double d_val = beta_new_k - beta_old_k;
@@ -326,8 +322,7 @@ List update_target_scale_aft(double xi_t_curr, // Scalar shadow variable
                              double lambda_T,
                              const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
                              double sd_y_T, const arma::vec& sd_y_S,
-                             int fam_code, int slab_code,
-                             bool approx = false, double k_apx = 10.0) {
+                             int fam_code, int slab_code) {
 
   // Scale-adjusted responses construct proposals; original responses enter the likelihood.
   int S = X_s_list.size();
@@ -419,8 +414,7 @@ List update_source_scales_aft(arma::vec xi_s_curr, // Size S shadow variables
                               const Rcpp::List& X_s_list, const Rcpp::List& Y_s_list, const Rcpp::List& C_s_list,
                               const arma::vec& lambda_S,
                               const arma::vec& sd_y_S,
-                              int fam_code, int slab_code,
-                              bool approx = false, double k_apx = 10.0) {
+                              int fam_code, int slab_code) {
 
   // Scale-adjusted responses construct proposals; original responses enter the likelihood.
   int S = xi_s_curr.n_elem;

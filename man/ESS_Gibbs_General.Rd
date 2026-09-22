@@ -53,7 +53,7 @@ ESS_Gibbs_General(
 
 \item{df}{Fixed positive degrees of freedom for 'Student-t', default is 4. Ignored for other families.}
 
-\item{slab}{Slab transformation: 'exp', 'poly', 'nlp1', 'nlp2', or 'guassian'.}
+\item{slab}{Slab transformation: 'exp', 'poly', 'nlp', or 'guassian'.}
 
 \item{verbose}{Verbosity flag.}
 

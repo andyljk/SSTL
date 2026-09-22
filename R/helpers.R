@@ -2,10 +2,10 @@
 
 #' @keywords internal
 #' @noRd
-calc_bias <- function(mat,p,lam_s,tau_S,slab_code,approx=F,k_apx=10){
+calc_bias <- function(mat,p,lam_s,tau_S,slab_code){
   S = ncol(mat)
   bias_mat <- sapply(1:S, function(s) {
-    calc_beta(mat[, s], lam_s[s], tau_S[s], p, slab_code, approx, k_apx)
+    calc_beta(mat[, s], lam_s[s], tau_S[s], p, slab_code)
   })
   return(bias_mat)
 }
@@ -53,10 +53,10 @@ H_l = function(w) w
 
 #' @keywords internal
 #' @noRd
-calc_beta  = function(b,lambda,tau,p,slab_code,approx=F,k_apx=10){
+calc_beta  = function(b,lambda,tau,p,slab_code){
   if (slab_code == 1){T_u = T_l; H_u = H_l}
   else if (slab_code == 2){T_u = T_c; H_u = H_c}
-  else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
+  else if (slab_code == 3){T_u = T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
   else if (slab_code == 5){T_u = T_n1; H_u = H_l}
   thresh <- a0_star(b[2*p + 1], lambda)
@@ -65,22 +65,22 @@ calc_beta  = function(b,lambda,tau,p,slab_code,approx=F,k_apx=10){
 
 #' @keywords internal
 #' @noRd
-calc_bias_group <- function(mat, group_map, lam_s, tau_S, slab_code, approx=F, k_apx=10){
+calc_bias_group <- function(mat, group_map, lam_s, tau_S, slab_code){
   S <- ncol(mat)
   bias_mat <- sapply(seq_len(S), function(s) {
-    calc_beta_group(mat[, s], group_map, lam_s[s], tau_S[s], slab_code, approx, k_apx)
+    calc_beta_group(mat[, s], group_map, lam_s[s], tau_S[s], slab_code)
   })
   return(bias_mat)
 }
 
 #' @keywords internal
 #' @noRd
-calc_beta_group <- function(b, group_map, lambda, tau, slab_code, approx=F, k_apx=10){
+calc_beta_group <- function(b, group_map, lambda, tau, slab_code){
   p <- length(group_map)
   G <- max(group_map)
   if (slab_code == 1){T_u = T_l; H_u = H_l}
   else if (slab_code == 2){T_u = T_c; H_u = H_c}
-  else if (slab_code == 3){T_u = if (approx) function(x) T_log(x, k_apx) else T_n1; H_u = H_n1}
+  else if (slab_code == 3){T_u = T_n1; H_u = H_n1}
   else if (slab_code == 4){T_u = T_n2; H_u = H_n2}
   else if (slab_code == 5){T_u = T_n1; H_u = H_l}
   a_group <- b[(p + 1):(p + G)]
