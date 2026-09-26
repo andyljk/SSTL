@@ -46,11 +46,11 @@ List update_target_general(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& 
   double a0_T = bt_c(2*p);
   vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
 
-  double ll_T = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
+  double ll_T = sstl::log_lik_general_kernel(resid_T, Y_T, sd_y_T, fam_code, df);
 
   double ll_S_total = 0;
   for(int s=0; s<S; s++) {
-    ll_S_total += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    ll_S_total += sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   double current_ll_global = ll_T + ll_S_total;
@@ -111,7 +111,7 @@ List update_target_general(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& 
         vec d_sub = delta_beta.subvec(start, end);
         resid_T_prop -= X_T.cols(start, end) * d_sub;
       }
-      double ll_T_prop = sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
+      double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
       // 2. Update Source Residuals
       double ll_S_prop_total = 0;
@@ -131,7 +131,7 @@ List update_target_general(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& 
           resid_S_prop[s] -= X_s_cpp[s].cols(start, end) * d_sub;
         }
 
-        ll_S_prop_total += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+        ll_S_prop_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
       }
 
       double prop_ll_global = ll_T_prop + ll_S_prop_total;
@@ -197,7 +197,7 @@ List update_source_joint_general(arma::mat bs_c, // (2p+1) x S matrix
   double current_ll_total = 0;
 
   for(int s=0; s<S; s++) {
-    ll_S[s] = sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    ll_S[s] = sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     current_ll_total += ll_S[s];
   }
 
@@ -283,7 +283,7 @@ List update_source_joint_general(arma::mat bs_c, // (2p+1) x S matrix
           resid_S_prop[s] -= X_s_cpp[s].col(k) * d_val;
         }
 
-        prop_ll_total += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+        prop_ll_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
       }
 
       if(prop_ll_total > log_y_threshold) {
@@ -342,9 +342,9 @@ List update_target_scale_general(double xi_t_curr, // Scalar shadow variable
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
   }
 
-  double current_ll = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
+  double current_ll = sstl::log_lik_general_kernel(resid_T, Y_T, sd_y_T, fam_code, df);
   for(int s=0; s<S; s++) {
-    current_ll += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    current_ll += sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   // 3. ESS Loop
@@ -368,11 +368,11 @@ List update_target_scale_general(double xi_t_curr, // Scalar shadow variable
     double prop_ll = 0;
 
     resid_T_prop = Y_T_scale - (Y_T_scale - resid_T) * (tau_prop / tau_curr);
-    prop_ll += sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
+    prop_ll += sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     for(int s=0; s<S; s++) {
       resid_S_prop[s] = Y_s_scale_cpp[s] - (Y_s_scale_cpp[s] - resid_S[s]) * (tau_prop / tau_curr);
-      prop_ll += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+      prop_ll += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }
 
     if(prop_ll > log_y_thresh) {
@@ -432,7 +432,7 @@ List update_source_scales_general(arma::vec xi_s_curr, // Size S shadow variable
   for(int s=0; s<S; s++) {
     Y_s_scale_cpp[s] = as<arma::vec>(Y_s_scale_list[s]);
     resid_S[s] = as<arma::vec>(resid_S_list[s]);
-    current_ll += sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    current_ll += sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
   // 3. ESS Loop
@@ -455,7 +455,7 @@ List update_source_scales_general(arma::vec xi_s_curr, // Size S shadow variable
     double prop_ll = 0;
     for(int s=0; s<S; s++) {
       resid_S_prop[s] = Y_s_scale_cpp[s] - (Y_s_scale_cpp[s] - resid_S[s]) * (tau_prop(s) / tau_curr(s));
-      prop_ll += sstl::log_lik_general(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+      prop_ll += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }
 
     if(prop_ll > log_y_thresh) {
@@ -486,7 +486,7 @@ List update_target_intercept_tl_general(double b0_T_curr, arma::vec resid_T, con
                                     double sd_prior = 10.0, double df = 4.0) {
 
   double nu = R::rnorm(0, sd_prior);
-  double current_ll = sstl::log_lik_general(resid_T, Y_T, sd_y_T, fam_code, df);
+  double current_ll = sstl::log_lik_general_kernel(resid_T, Y_T, sd_y_T, fam_code, df);
 
   double u = R::runif(0, 1);
   double log_y_thresh = current_ll + log(u);
@@ -502,7 +502,7 @@ List update_target_intercept_tl_general(double b0_T_curr, arma::vec resid_T, con
   while(true) {
     b0_T_prop = b0_T_curr * cos(theta) + nu * sin(theta);
     resid_T_prop = resid_T - (b0_T_prop - b0_T_curr);
-    double prop_ll = sstl::log_lik_general(resid_T_prop, Y_T, sd_y_T, fam_code, df);
+    double prop_ll = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid_T = resid_T_prop;
@@ -544,7 +544,7 @@ List update_source_intercepts_tl_general(arma::vec b0_s_curr,
 
   for(int s = 0; s < S; s++) {
     double nu = R::rnorm(0, sd_prior);
-    double current_ll = sstl::log_lik_general(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    double current_ll = sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
 
     double u = R::runif(0, 1);
     double log_y_thresh = current_ll + log(u);
@@ -560,7 +560,7 @@ List update_source_intercepts_tl_general(arma::vec b0_s_curr,
     while(true) {
       b0_prop = b0_s_curr(s) * cos(theta) + nu * sin(theta);
       resid_prop = resid_S[s] - (b0_prop - b0_s_curr(s));
-      double prop_ll = sstl::log_lik_general(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
+      double prop_ll = sstl::log_lik_general_kernel(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
 
       if(prop_ll > log_y_thresh) {
         b0_s_curr(s) = b0_prop;

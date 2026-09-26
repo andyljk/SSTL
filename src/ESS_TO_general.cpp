@@ -26,7 +26,7 @@ List update_blocks_general(arma::vec b_c, arma::vec resid, const arma::mat& X, c
 
   // Reconstruct the current slope effects once; residual is passed in
   vec beta = sstl::get_beta(w, a, tau, a0, lambda, slab_code);
-  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
+  double current_ll = sstl::log_lik_general_kernel(resid, Y, sd_y, fam_code, df);
 
   vec N_s = zeros(K);
 
@@ -94,7 +94,7 @@ List update_blocks_general(arma::vec b_c, arma::vec resid, const arma::mat& X, c
         resid_prop -= X.cols(start_col, end_col) * d_sub;
       }
 
-      double ll_prop = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
+      double ll_prop = sstl::log_lik_general_kernel(resid_prop, Y, sd_y, fam_code, df);
 
       if(ll_prop > log_y_threshold) {
         // ACCEPT
@@ -165,7 +165,7 @@ List update_scale_general(double xi_curr, // Current Shadow Variable for Tau
 
   // Initial Likelihood
   double current_scale = std::exp(xi_curr);
-  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
+  double current_ll = sstl::log_lik_general_kernel(resid, Y, sd_y, fam_code, df);
 
   // Threshold
   double u = R::runif(0, 1);
@@ -189,7 +189,7 @@ List update_scale_general(double xi_curr, // Current Shadow Variable for Tau
     // Y_scale excludes the intercept; Y is the original response for the likelihood.
     // Since resid = Y_scale - current_scale * Z, we have (Y_scale - resid) = current_scale * Z
     resid_prop = Y_scale - (Y_scale - resid) * (scale_prop / current_scale);
-    double prop_ll = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
+    double prop_ll = sstl::log_lik_general_kernel(resid_prop, Y, sd_y, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid = resid_prop;
@@ -220,7 +220,7 @@ List update_intercept_to_general(double b0_curr, arma::vec resid, const arma::ve
   // Current residual is assumed to be Y - b0_curr - X * beta
   double nu = R::rnorm(0, sd_prior);
 
-  double current_ll = sstl::log_lik_general(resid, Y, sd_y, fam_code, df);
+  double current_ll = sstl::log_lik_general_kernel(resid, Y, sd_y, fam_code, df);
 
   double u = R::runif(0, 1);
   double log_y_thresh = current_ll + log(u);
@@ -239,7 +239,7 @@ List update_intercept_to_general(double b0_curr, arma::vec resid, const arma::ve
 
     // Intercept updates only shift the residual by the proposed intercept change
     resid_prop = resid - (b0_prop - b0_curr);
-    double prop_ll = sstl::log_lik_general(resid_prop, Y, sd_y, fam_code, df);
+    double prop_ll = sstl::log_lik_general_kernel(resid_prop, Y, sd_y, fam_code, df);
 
     if(prop_ll > log_y_thresh) {
       resid = resid_prop;

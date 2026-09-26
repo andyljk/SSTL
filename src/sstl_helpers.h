@@ -215,6 +215,60 @@ inline double log_lik_general(const arma::vec& resid, const arma::vec& Y, double
   return ll;
 }
 
+// log_lik_general up to terms that do not depend on the linear predictor.
+// Valid only for comparing values at the same sd_y and df (slice tests for
+// coefficients, intercepts and slab scales); sd_y updates use log_lik_general.
+inline double log_lik_general_kernel(const arma::vec& resid, const arma::vec& Y, double sd_y, int fam_code, double df = 4.0) {
+  double ll = 0.0;
+  int n = resid.n_elem;
+  const double* r_ptr = resid.memptr();
+  const double* y_ptr = Y.memptr();
+
+  if (fam_code == 3) { // --- Student-t: drops lgamma terms and -n * log(sd_y) ---
+    double inv_sd = 1.0 / sd_y;
+    for(int i = 0; i < n; ++i) {
+      double zi = r_ptr[i] * inv_sd;
+      ll += std::log1p(zi * zi / df);
+    }
+    return -0.5 * (df + 1.0) * ll;
+
+  } else if (fam_code == 4) { // --- Poisson: drops lgamma(y + 1) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      ll += y_ptr[i] * eta - std::exp(eta);
+    }
+    return ll;
+
+  } else if (fam_code == 5) { // --- Negative binomial: y * eta - (y + size) * log(size + exp(eta)) ---
+    double log_size = std::log(sd_y);
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      double hi = std::max(eta, log_size);
+      double log_size_plus_mu = hi + std::log1p(std::exp(-std::abs(eta - log_size)));
+      ll += y_ptr[i] * eta - (y_ptr[i] + sd_y) * log_size_plus_mu;
+    }
+    return ll;
+
+  } else if (fam_code == 6) { // --- Gamma: -shape * (eta + y * exp(-eta)) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      ll += eta + y_ptr[i] * std::exp(-eta);
+    }
+    return -sd_y * ll;
+
+  } else if (fam_code == 7) { // --- Beta: drops lgamma(precision) and -log(y) - log(1 - y) ---
+    for(int i = 0; i < n; ++i) {
+      double eta = y_ptr[i] - r_ptr[i];
+      double a = R::plogis(eta, 0.0, 1.0, 1, 0) * sd_y;
+      double b = R::plogis(eta, 0.0, 1.0, 0, 0) * sd_y;
+      ll += a * std::log(y_ptr[i]) + b * std::log1p(-y_ptr[i]) - std::lgamma(a) - std::lgamma(b);
+    }
+    return ll;
+  }
+
+  return log_lik_general(resid, Y, sd_y, fam_code, df); // Gaussian and logistic are already cheap.
+}
+
 inline double log_lik_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C, double sd_y, int fam_code) {
   double ll = 0.0;
   double inv_sd = 1.0 / sd_y;
@@ -241,7 +295,7 @@ inline double log_lik_aft(const arma::vec& resid, const arma::vec& Y, const arma
     for(int i = 0; i < n; ++i) {
       double zi = r_ptr[i] * inv_sd;
       if(c_ptr[i] == 1.0) {
-        ll += R::dnorm(zi, 0.0, 1.0, 1) - log_sd;
+        ll += -(M_LN_SQRT_2PI + 0.5 * zi * zi) - log_sd; // R::dnorm(zi, 0, 1, log = TRUE), inlined
       } else {
         ll += R::pnorm(-zi, 0.0, 1.0, 1, 1);
       }
