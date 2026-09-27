@@ -47,7 +47,7 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
                  EB_control=list(), verbose=1, ...) {
   X <- as.matrix(X)
   Y <- as.numeric(Y)
-  X_s <- lapply(X_s, as.matrix)
+  X_s <- lapply(X_s, as_double_matrix)
   Y_s <- lapply(Y_s, as.numeric)
   S <- length(X_s)
   if (length(Y_s) != S) stop("X_s and Y_s must contain the same number of studies.")

@@ -50,7 +50,7 @@ ESS_Gibbs_TL_General <- function(X_T, Y_T, # Target Data
 
   # Type Safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T)
-  X_s <- lapply(X_s, as.matrix); Y_s <- lapply(Y_s, as.numeric)
+  X_s <- lapply(X_s, as_double_matrix); Y_s <- lapply(Y_s, as.numeric)
 
   if (fam_code == 2 && (any(!Y_T %in% c(0, 1)) || any(vapply(Y_s, function(y) any(!y %in% c(0, 1)), logical(1))))) {
     stop("Target and source responses must contain only 0 and 1 for 'Logistic'.")
@@ -326,7 +326,7 @@ EB_SAEM_TL_General = function(X_T, Y_T, # Target Data
 
   # Type safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T)
-  X_s <- lapply(X_s, as.matrix); Y_s <- lapply(Y_s, as.numeric)
+  X_s <- lapply(X_s, as_double_matrix); Y_s <- lapply(Y_s, as.numeric)
 
   p <- ncol(X_T)
   S <- length(X_s)

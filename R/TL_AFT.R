@@ -44,7 +44,7 @@ ESS_Gibbs_TL_AFT <- function(X_T, Y_T, C_T=NULL, # Target Data
 
   # Type Safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T); C_T <- as.numeric(C_T)
-  X_s <- lapply(X_s, as.matrix); Y_s <- lapply(Y_s, as.numeric); C_s <- lapply(C_s, as.numeric)
+  X_s <- lapply(X_s, as_double_matrix); Y_s <- lapply(Y_s, as.numeric); C_s <- lapply(C_s, as.numeric)
 
   p = ncol(X_T); n_t = nrow(X_T)
   S = length(X_s)
@@ -293,7 +293,7 @@ EB_SAEM_TL_AFT = function(X_T, Y_T, C_T=NULL, # Target Data
 
   # Type safety
   X_T <- as.matrix(X_T); Y_T <- as.numeric(Y_T); C_T <- as.numeric(C_T)
-  X_s <- lapply(X_s, as.matrix); Y_s <- lapply(Y_s, as.numeric); C_s <- lapply(C_s, as.numeric)
+  X_s <- lapply(X_s, as_double_matrix); Y_s <- lapply(Y_s, as.numeric); C_s <- lapply(C_s, as.numeric)
 
   p <- ncol(X_T)
   S <- length(X_s)

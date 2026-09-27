@@ -45,7 +45,7 @@ ESS_Gibbs_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
   X_T <- as.matrix(X_T)
   Y_T <- as.numeric(Y_T)
   C_T <- as.numeric(C_T)
-  X_s <- lapply(X_s, as.matrix)
+  X_s <- lapply(X_s, as_double_matrix)
   Y_s <- lapply(Y_s, as.numeric)
   C_s <- lapply(C_s, as.numeric)
 
@@ -295,7 +295,7 @@ EB_SAEM_TL_Group_AFT <- function(X_T, Y_T, C_T=NULL,
   X_T <- as.matrix(X_T)
   Y_T <- as.numeric(Y_T)
   C_T <- as.numeric(C_T)
-  X_s <- lapply(X_s, as.matrix)
+  X_s <- lapply(X_s, as_double_matrix)
   Y_s <- lapply(Y_s, as.numeric)
   C_s <- lapply(C_s, as.numeric)
 

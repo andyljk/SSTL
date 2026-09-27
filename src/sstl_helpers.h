@@ -305,6 +305,30 @@ inline double log_lik_aft(const arma::vec& resid, const arma::vec& Y, const arma
   return ll;
 }
 
+// Non-owning views of the double matrices / vectors in an R list, so per-call
+// setup does not copy the source data. The list must outlive the views.
+inline std::vector<arma::mat> mat_views(const Rcpp::List& x_list) {
+  std::vector<arma::mat> out;
+  out.reserve(x_list.size());
+  for (int s = 0; s < x_list.size(); ++s) {
+    SEXP x = x_list[s];
+    if (TYPEOF(x) != REALSXP || !Rf_isMatrix(x)) Rcpp::stop("Source design matrices must be double matrices.");
+    out.emplace_back(REAL(x), Rf_nrows(x), Rf_ncols(x), false, true);
+  }
+  return out;
+}
+
+inline std::vector<arma::vec> vec_views(const Rcpp::List& x_list) {
+  std::vector<arma::vec> out;
+  out.reserve(x_list.size());
+  for (int s = 0; s < x_list.size(); ++s) {
+    SEXP x = x_list[s];
+    if (TYPEOF(x) != REALSXP) Rcpp::stop("Source responses and indicators must be double vectors.");
+    out.emplace_back(REAL(x), Rf_xlength(x), false, true);
+  }
+  return out;
+}
+
 inline arma::vec calc_bias_vec(const arma::vec& bs_col, double tau_s, int p,
                                double lambda, int slab_code,
                                bool approx = false, double k_apx = 10.0) {

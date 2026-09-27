@@ -75,7 +75,14 @@ List update_blocks_general(arma::vec b_c, arma::vec resid, const arma::mat& X, c
         beta_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
         vec delta_beta = beta_prop - beta;
 
-        resid_prop -= X * delta_beta;
+        // Only columns whose coefficient changed enter the residual update
+        uvec nz = find(delta_beta != 0.0);
+        if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
+          b_c.elem(idx) = f_prop;
+          beta = beta_prop;
+          break;
+        }
+        resid_prop -= X.cols(nz) * delta_beta.elem(nz);
 
       } else {
         // CASE 2: Standard Block (w + a) -> Local Update
@@ -91,6 +98,11 @@ List update_blocks_general(arma::vec b_c, arma::vec resid, const arma::mat& X, c
         // Extract the current beta for these specific columns
         vec beta_sub_curr = beta.subvec(start_col, end_col);
         vec d_sub = beta_prop - beta_sub_curr;
+        if (!any(d_sub != 0.0)) { // unchanged likelihood: ESS accepts
+          b_c.elem(idx) = f_prop;
+          beta.subvec(start_col, end_col) = beta_prop;
+          break;
+        }
         resid_prop -= X.cols(start_col, end_col) * d_sub;
       }
 

@@ -25,48 +25,37 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
   int S = X_S_list.size();
   int K = id.size();
 
-  // Preallocate matrices to save speed
-  std::vector<arma::mat> X_s_cpp(S);
-  // Reference original numeric responses without copying their data.
-  std::vector<arma::vec> Y_s_cpp;
-  Y_s_cpp.reserve(S);
-  for (int s = 0; s < S; ++s) {
-    Rcpp::NumericVector Y_s = Y_s_list[s];
-    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
-  }
-  std::vector<arma::vec> C_s_cpp(S);
-  std::vector<arma::vec> resid_S(S);
-  for(int s=0; s<S; s++) {
-    X_s_cpp[s] = as<arma::mat>(X_S_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_S_list[s]);
-    resid_S[s] = as<arma::vec>(resid_S_list[s]);
-  }
+  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_S_list);
+  std::vector<arma::vec> Y_s_cpp = sstl::vec_views(Y_s_list);
+  std::vector<arma::vec> C_s_cpp = sstl::vec_views(C_S_list);
+  std::vector<arma::vec> resid_S(S), resid_S_prop(S);
+  for (int s = 0; s < S; s++) resid_S[s] = as<arma::vec>(resid_S_list[s]);
 
-  // Current Beta_T
-  vec w_T = bt_c.subvec(0, p-1);
-  vec a_T = bt_c.subvec(p, 2*p-1);
+  // Current Beta_T; the threshold only changes in the final (a0) block
   double a0_T = bt_c(2*p);
-  vec beta_T = sstl::get_beta(w_T, a_T, tau, a0_T, lambda_T, slab_code);
+  double threshold = sstl::threshold_from_a0(a0_T, lambda_T);
+  vec beta_T = sstl::get_beta(bt_c.subvec(0, p-1), bt_c.subvec(p, 2*p-1), tau, a0_T, lambda_T, slab_code);
 
   double ll_T = sstl::log_lik_aft(resid_T, Y_T, C_T, sd_y_T, fam_code);
-
   double ll_S_total = 0;
-  for(int s=0; s<S; s++) {
+  for (int s = 0; s < S; s++) {
     ll_S_total += sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
   }
 
   double current_ll_global = ll_T + ll_S_total;
   vec N_s_out = zeros(K);
+  vec resid_T_prop;
 
   // --- LOOP OVER BLOCKS ---
-  for(int k=0; k<K; k++) {
+  for (int k = 0; k < K; k++) {
     IntegerVector idx_r = id[k];
     uvec idx = as<uvec>(idx_r) - 1;
+    bool is_a0 = (k == K - 1);
 
     // A. Setup ESS
     vec f_curr = bt_c.elem(idx);
     vec nu(idx.n_elem);
-    for(int j=0; j<idx.n_elem; j++) nu(j) = R::rnorm(0, sd_T(idx(j)));
+    for (uword j = 0; j < idx.n_elem; j++) nu(j) = R::rnorm(0, sd_T(idx(j)));
 
     double u_uni = R::runif(0, 1);
     double log_y_threshold = current_ll_global + log(u_uni);
@@ -77,74 +66,71 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
 
     int n_s = 0;
 
-    // B. Slice Loop
-    vec resid_T_prop = resid_T;
-    std::vector<vec> resid_S_prop(S);
-    for(int s = 0; s < S; s++) {
-      resid_S_prop[s] = resid_S[s];
-    }
+    // Standard blocks hold w (first half) and a (second half) for columns start..start+half-1
+    int half = idx.n_elem / 2;
+    uword start = is_a0 ? 0 : idx(0);
+    vec beta_prop, delta_beta, tau_h;
+    uvec nz;
+    if (is_a0) tau_h = tau * sstl::slab_weight_vec(bt_c.subvec(0, p-1), slab_code);
 
-    while(n_s < S_max) {
+    // B. Slice Loop
+    while (n_s < S_max) {
       n_s++;
       vec f_prop = f_curr * cos(theta) + nu * sin(theta);
 
-      // Construct tentative parameters
-      vec bt_prop = bt_c;
-      bt_prop.elem(idx) = f_prop;
-
-      vec w_prop = bt_prop.subvec(0, p-1);
-      vec a_prop = bt_prop.subvec(p, 2*p-1);
-      double a0_prop = bt_prop(2*p);
-
-      vec beta_T_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda_T, slab_code);
-
-      // --- C. GLOBAL RESIDUAL UPDATE ---
-      vec delta_beta = beta_T_prop - beta_T;
-
-      // 1. Update Target Residual
-      resid_T_prop = resid_T;
-      if (k == K - 1) { // Global a0 update
-        resid_T_prop -= X_T * delta_beta;
-      } else { // Sparse update
-        // Assuming standard block structure: w_idx (first half) matches cols
-        int half = idx.n_elem / 2;
-        uword start = idx(0);
-        uword end = idx(half-1);
-        vec d_sub = delta_beta.subvec(start, end);
-        resid_T_prop -= X_T.cols(start, end) * d_sub;
-      }
-      double ll_T_prop = sstl::log_lik_aft(resid_T_prop, Y_T, C_T, sd_y_T, fam_code);
-
-      // 2. Update Source Residuals
-      double ll_S_prop_total = 0;
-
-
-      for(int s=0; s<S; s++) {
-        resid_S_prop[s] = resid_S[s]; // copy current resid
-
-        // Apply same delta_beta to source
-        if (k == K - 1) {
-          resid_S_prop[s] -= X_s_cpp[s] * delta_beta;
-        } else {
-          int half = idx.n_elem / 2;
-          uword start = idx(0);
-          uword end = idx(half-1);
-          vec d_sub = delta_beta.subvec(start, end);
-          resid_S_prop[s] -= X_s_cpp[s].cols(start, end) * d_sub;
+      // Coefficient change implied by the proposal (only the block's columns, or all for a0)
+      bool changed = false;
+      if (!is_a0) {
+        beta_prop.set_size(half);
+        delta_beta.set_size(half);
+        for (int j = 0; j < half; j++) {
+          beta_prop(j) = sstl::calc_scalar_beta(f_prop(j), f_prop(half + j), threshold, tau, slab_code);
+          delta_beta(j) = beta_prop(j) - beta_T(start + j);
+          if (delta_beta(j) != 0.0) changed = true;
         }
-
-        ll_S_prop_total += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+      } else {
+        double threshold_prop = sstl::threshold_from_a0(f_prop(0), lambda_T);
+        const double* a_ptr = bt_c.memptr() + p;
+        beta_prop.set_size(p);
+        for (int j = 0; j < p; j++) {
+          beta_prop(j) = tau_h(j) * sstl::activation_scalar(a_ptr[j], threshold_prop, slab_code);
+        }
+        delta_beta = beta_prop - beta_T;
+        nz = find(delta_beta != 0.0);
+        changed = nz.n_elem > 0;
       }
 
-      double prop_ll_global = ll_T_prop + ll_S_prop_total;
+      // An unchanged beta leaves every likelihood unchanged, so ESS accepts without evaluating it.
+      double prop_ll_global = current_ll_global;
+      if (changed) {
+        // C. Residual updates for the target and every source
+        if (is_a0) resid_T_prop = resid_T - X_T.cols(nz) * delta_beta.elem(nz);
+        else       resid_T_prop = resid_T - X_T.cols(start, start + half - 1) * delta_beta;
+        double ll_T_prop = sstl::log_lik_aft(resid_T_prop, Y_T, C_T, sd_y_T, fam_code);
 
-      if(prop_ll_global > log_y_threshold) {
+        double ll_S_prop_total = 0;
+        for (int s = 0; s < S; s++) {
+          if (is_a0) resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(nz) * delta_beta.elem(nz);
+          else       resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(start, start + half - 1) * delta_beta;
+          ll_S_prop_total += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+        }
+        prop_ll_global = ll_T_prop + ll_S_prop_total;
+      }
+
+      if (!changed || prop_ll_global > log_y_threshold) {
         // ACCEPT
-        bt_c = bt_prop;
-        beta_T = beta_T_prop;
-        resid_T = resid_T_prop;
-        resid_S = resid_S_prop; // update all source resids
-        current_ll_global = prop_ll_global;
+        bt_c.elem(idx) = f_prop;
+        if (changed) {
+          if (is_a0) {
+            beta_T = beta_prop;
+            threshold = sstl::threshold_from_a0(f_prop(0), lambda_T);
+          } else {
+            beta_T.subvec(start, start + half - 1) = beta_prop;
+          }
+          resid_T.swap(resid_T_prop);
+          for (int s = 0; s < S; s++) resid_S[s].swap(resid_S_prop[s]);
+          current_ll_global = prop_ll_global;
+        }
         break;
       } else {
         if(theta < 0) theta_min = theta;
@@ -165,8 +151,10 @@ List update_target_aft(arma::vec bt_c, arma::vec resid_T, const Rcpp::List& resi
 }
 
 // ============================================================================
-// FUNCTION: Update Source Biases (Jointly across sources)
-// Respects cov_W by updating rows of bs_c simultaneously
+// FUNCTION: Update Source Biases
+// Sources are conditionally independent given the target, so each source's
+// latent parameters are updated in turn by one-dimensional ESS steps that
+// involve only that source's likelihood.
 // ============================================================================
 
 // [[Rcpp::export]]
@@ -181,128 +169,84 @@ List update_source_joint_aft(arma::mat bs_c, // (2p+1) x S matrix
   int S = bs_c.n_cols;
   int n_params = bs_c.n_rows; // 2p + 1
 
-  std::vector<arma::mat> X_s_cpp(S);
-  // Reference original numeric responses without copying their data.
-  std::vector<arma::vec> Y_s_cpp;
-  Y_s_cpp.reserve(S);
-  for (int s = 0; s < S; ++s) {
-    Rcpp::NumericVector Y_s = Y_s_list[s];
-    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
-  }
-  std::vector<arma::vec> C_s_cpp(S);
+  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_s_list);
+  std::vector<arma::vec> Y_s_cpp = sstl::vec_views(Y_s_list);
+  std::vector<arma::vec> C_s_cpp = sstl::vec_views(C_s_list);
   std::vector<arma::vec> resid_S(S);
-  for(int s=0; s<S; s++) {
-    X_s_cpp[s] = as<arma::mat>(X_s_list[s]);
-    C_s_cpp[s] = as<arma::vec>(C_s_list[s]);
-    resid_S[s] = as<arma::vec>(resid_S_list[s]);
-  }
+  for (int s = 0; s < S; s++) resid_S[s] = as<arma::vec>(resid_S_list[s]);
 
-  std::vector<double> ll_S(S);
-  double current_ll_total = 0;
+  vec N_s_out = zeros(n_params); // slice iterations per row, summed over sources
+  vec resid_prop;
 
-  for(int s=0; s<S; s++) {
-    ll_S[s] = sstl::log_lik_aft(resid_S[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
-    current_ll_total += ll_S[s];
-  }
+  for (int s = 0; s < S; s++) {
+    vec& resid = resid_S[s];
+    const mat& X = X_s_cpp[s];
+    double tau_s = tau_S(s);
+    double lambda_s = lambda_S(s);
+    double ll_curr = sstl::log_lik_aft(resid, Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+    // a0 is the last row, so the threshold is fixed while w and a are updated
+    double threshold = sstl::threshold_from_a0(bs_c(2*p, s), lambda_s);
 
-  vec N_s_out = zeros(n_params);
+    for (int j = 0; j < n_params; j++) {
+      bool is_a0 = (j == 2*p);
+      int k = j % p;
 
-  // Loop over rows of bs_c
-  for(int j=0; j<n_params; j++) {
+      double f_curr = bs_c(j, s);
+      double nu = R::rnorm(0, 1);
+      double log_y_threshold = ll_curr + log(R::runif(0, 1));
+      double theta = R::runif(0, 2 * M_PI);
+      double theta_min = theta - 2 * M_PI;
+      double theta_max = theta;
+      int n_s = 0;
 
-    // Setup Ellipse
-    vec nu = randn(S);
-    // B. Slice Sampling Setup
-    rowvec f_curr = bs_c.row(j); // The current row across all S
-
-    double u_uni = R::runif(0, 1);
-    double log_y_threshold = current_ll_total + log(u_uni);
-
-    double theta = R::runif(0, 2 * M_PI);
-    double theta_min = theta - 2 * M_PI;
-    double theta_max = theta;
-
-    int n_s = 0;
-
-    std::vector<arma::vec> resid_S_prop(S);
-    std::vector<double> precomputed_thresh(S, 0.0);
-    if (j < 2 * p) {
-      for (int s = 0; s < S; s++) {
-        double a0_fixed = bs_c(2 * p, s);
-        double lam = lambda_S(s);
-        double thresh_prob = std::pow(sstl::pnorm_custom(a0_fixed), 1.0 / lam);
-        precomputed_thresh[s] = sstl::qnorm_custom(thresh_prob);
+      double beta_old = 0.0;
+      vec w_s, a_s, bias_old, bias_prop, delta;
+      uvec nz;
+      if (is_a0) {
+        w_s = bs_c.col(s).subvec(0, p-1);
+        a_s = bs_c.col(s).subvec(p, 2*p-1);
+        bias_old = sstl::get_beta(w_s, a_s, tau_s, f_curr, lambda_s, slab_code);
+      } else {
+        beta_old = sstl::calc_scalar_beta(bs_c(k, s), bs_c(k+p, s), threshold, tau_s, slab_code);
       }
-    }
-    // C. Slice Loop
-    while(n_s < S_max) {
-      n_s++;
 
-      // Propose New Row
-      rowvec f_prop_row = f_curr * cos(theta) + trans(nu) * sin(theta);
+      while (n_s < S_max) {
+        n_s++;
+        double f_prop = f_curr * cos(theta) + nu * sin(theta);
 
-      // Calculate Likelihood Delta
-      double prop_ll_total = 0;
-
-      for(int s=0; s<S; s++) {
-        double val_new = f_prop_row(s);
-
-        resid_S_prop[s] = resid_S[s];
-        double lam = lambda_S(s);
-
-        if (j == 2*p) {
-          // CASE 1: Global a0 update (recompute full vector)
-          vec bs_col = bs_c.col(s);
-          vec bias_old = sstl::get_beta(bs_col.subvec(0, p-1),
-                                       bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       bs_col(2*p), lam, slab_code);
-
-          // Construct New Bias (Vector)
-          vec bias_new = sstl::get_beta(bs_col.subvec(0, p-1),
-                                       bs_col.subvec(p, 2*p-1), tau_S(s),
-                                       val_new, lam, slab_code); // Use val_new for a0
-
-          vec diff = bias_new - bias_old;
-          resid_S_prop[s] -= X_s_cpp[s] * diff;
-
+        bool changed;
+        if (is_a0) {
+          bias_prop = sstl::get_beta(w_s, a_s, tau_s, f_prop, lambda_s, slab_code);
+          delta = bias_prop - bias_old;
+          nz = find(delta != 0.0);
+          changed = nz.n_elem > 0;
+          if (changed) resid_prop = resid - X.cols(nz) * delta.elem(nz);
         } else {
-          // --- CASE 2: Local w_k or a_k (Scalar Math) ---
-          int k = j % p;
-          double w_fixed = bs_c(k, s);
-          double a_fixed = bs_c(k+p, s);
-
-          // Determine Threshold
-          double thresh = precomputed_thresh[s];
-
-          // 1. Beta Old
-          double beta_old_k = sstl::calc_scalar_beta(w_fixed, a_fixed, thresh, tau_S(s), slab_code);
-
-          // 2. Beta New (Swap parameter)
-          double w_temp = (j < p) ? val_new : w_fixed;
-          double a_temp = (j < p) ? a_fixed : val_new;
-          double beta_new_k = sstl::calc_scalar_beta(w_temp, a_temp, thresh, tau_S(s), slab_code);
-
-          // 3. Update Residual
-          double d_val = beta_new_k - beta_old_k;
-          resid_S_prop[s] -= X_s_cpp[s].col(k) * d_val;
+          double beta_new = (j < p)
+            ? sstl::calc_scalar_beta(f_prop, bs_c(k+p, s), threshold, tau_s, slab_code)
+            : sstl::calc_scalar_beta(bs_c(k, s), f_prop, threshold, tau_s, slab_code);
+          double d_val = beta_new - beta_old;
+          changed = (d_val != 0.0);
+          if (changed) resid_prop = resid - X.col(k) * d_val;
         }
 
-        prop_ll_total += sstl::log_lik_aft(resid_S_prop[s], Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code);
+        // An unchanged bias leaves the likelihood unchanged, so ESS accepts without evaluating it.
+        double ll_prop = changed ? sstl::log_lik_aft(resid_prop, Y_s_cpp[s], C_s_cpp[s], sd_y_S(s), fam_code) : ll_curr;
+        if (!changed || ll_prop > log_y_threshold) {
+          bs_c(j, s) = f_prop;
+          if (changed) {
+            resid.swap(resid_prop);
+            ll_curr = ll_prop;
+          }
+          break;
+        } else {
+          if(theta < 0) theta_min = theta;
+          else theta_max = theta;
+          theta = R::runif(theta_min, theta_max);
+        }
       }
-
-      if(prop_ll_total > log_y_threshold) {
-        // ACCEPT: Update global state
-        bs_c.row(j) = f_prop_row;
-        resid_S = resid_S_prop;
-        current_ll_total = prop_ll_total;
-        break;
-      } else {
-        if(theta < 0) theta_min = theta;
-        else theta_max = theta;
-        theta = R::runif(theta_min, theta_max);
-      }
+      N_s_out(j) += n_s;
     }
-    N_s_out(j) = n_s;
   }
 
   Rcpp::List resid_S_out(S);

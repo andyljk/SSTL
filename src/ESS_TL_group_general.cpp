@@ -9,13 +9,6 @@ using namespace arma;
 
 namespace {
 
-std::vector<arma::mat> as_mat_vec(const Rcpp::List& x_list) {
-  int S = x_list.size();
-  std::vector<arma::mat> out(S);
-  for (int s = 0; s < S; ++s) out[s] = as<arma::mat>(x_list[s]);
-  return out;
-}
-
 std::vector<arma::vec> as_vec_vec(const Rcpp::List& x_list) {
   int S = x_list.size();
   std::vector<arma::vec> out(S);
@@ -56,7 +49,7 @@ List update_target_group_general(arma::vec bt_c,
   int S = X_S_list.size();
   int G = id.size();
 
-  std::vector<arma::mat> X_s_cpp = as_mat_vec(X_S_list);
+  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_S_list);
   // Reference original numeric responses without copying their data.
   std::vector<arma::vec> Y_s_cpp;
   Y_s_cpp.reserve(S);
@@ -101,6 +94,11 @@ List update_target_group_general(arma::vec bt_c,
       ++n_s;
       double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
       double act_new = sstl::activation_scalar(f_prop, threshold_T, slab_code);
+      if (act_new == act_old) { // group stays inactive (or unchanged): ESS accepts
+        bt_c(idx_a) = f_prop;
+        a_T(g) = f_prop;
+        break;
+      }
       vec delta_beta = tau * h_group * (act_new - act_old);
 
       vec resid_T_prop = resid_T - X_T.cols(affected_cols) * delta_beta;
@@ -151,6 +149,12 @@ List update_target_group_general(arma::vec bt_c,
         double beta_new = sstl::calc_scalar_beta(w_prop, a_T(g), threshold_T, tau,
                                                 slab_code);
         double delta_beta = beta_new - beta_old;
+        if (delta_beta == 0.0) { // unchanged likelihood: ESS accepts
+          bt_c(j) = w_prop;
+          w_T(j) = w_prop;
+          beta_T(j) = beta_new;
+          break;
+        }
 
         vec resid_T_prop = resid_T - X_T.col(j) * delta_beta;
         double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
@@ -197,14 +201,22 @@ List update_target_group_general(arma::vec bt_c,
     vec beta_T_prop = sstl::get_beta_group(w_T, a_T, group_map, tau, f_prop, lambda_T,
                                           slab_code);
     vec delta_beta = beta_T_prop - beta_T;
+    uvec nz = find(delta_beta != 0.0);
+    if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
+      bt_c(idx_a0) = f_prop;
+      a0_T = f_prop;
+      threshold_T = sstl::threshold_from_a0(a0_T, lambda_T);
+      beta_T = beta_T_prop;
+      break;
+    }
 
-    vec resid_T_prop = resid_T - X_T * delta_beta;
+    vec resid_T_prop = resid_T - X_T.cols(nz) * delta_beta.elem(nz);
     double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     double ll_S_prop_total = 0.0;
     std::vector<vec> resid_S_prop(S);
     for (int s = 0; s < S; ++s) {
-      resid_S_prop[s] = resid_S[s] - X_s_cpp[s] * delta_beta;
+      resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(nz) * delta_beta.elem(nz);
       ll_S_prop_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
     }
 
@@ -253,152 +265,140 @@ List update_source_joint_group_general(arma::mat bs_c,
   int G = id.size();
   int idx_a0 = p + G;
 
-  std::vector<arma::mat> X_s_cpp = as_mat_vec(X_s_list);
-  // Reference original numeric responses without copying their data.
-  std::vector<arma::vec> Y_s_cpp;
-  Y_s_cpp.reserve(S);
-  for (int s = 0; s < S; ++s) {
-    Rcpp::NumericVector Y_s = Y_s_list[s];
-    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
-  }
+  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_s_list);
+  std::vector<arma::vec> Y_s_cpp = sstl::vec_views(Y_s_list);
   std::vector<arma::vec> resid_S = as_vec_vec(resid_S_list);
   std::vector<arma::uvec> group_cols = as_uvec_groups(id);
 
-  double current_ll_total = 0.0;
+  vec N_s_out = zeros(p + G + 1); // slice iterations per row, summed over sources
+  vec resid_prop;
+
+  // Sources are conditionally independent given the target: update each source
+  // in turn with one-dimensional ESS steps on its own likelihood.
   for (int s = 0; s < S; ++s) {
-    current_ll_total += sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
-  }
+    vec& resid = resid_S[s];
+    const mat& X = X_s_cpp[s];
+    double tau_s = tau_S(s);
+    double ll_curr = sstl::log_lik_general_kernel(resid, Y_s_cpp[s], sd_y_S(s), fam_code, df);
+    // a0 is updated last, so the threshold is fixed for the gates and weights
+    double thresh_s = sstl::threshold_from_a0(bs_c(idx_a0, s), lambda_S(s));
 
-  vec N_s_out = zeros(p + G + 1);
+    for (int g = 0; g < G; ++g) {
+      const uvec& affected_cols = group_cols[g];
+      int idx_a = p + g;
 
-  for (int g = 0; g < G; ++g) {
-    const uvec& affected_cols = group_cols[g];
-    int idx_a = p + g;
+      // Group gate first.
+      double f_curr = bs_c(idx_a, s);
+      double nu = R::rnorm(0.0, 1.0);
+      double log_y_threshold = ll_curr + std::log(R::runif(0.0, 1.0));
+      double theta = R::runif(0.0, 2.0 * M_PI);
+      double theta_min = theta - 2.0 * M_PI;
+      double theta_max = theta;
+      int n_s = 0;
 
-    // Shared group gate across sources, updated row-wise.
-    rowvec f_curr = bs_c.row(idx_a);
-    vec nu = randn(S);
-    double log_y_threshold = current_ll_total + std::log(R::runif(0.0, 1.0));
+      double act_old = sstl::activation_scalar(f_curr, thresh_s, slab_code);
+      vec w_group(affected_cols.n_elem);
+      for (uword pos = 0; pos < affected_cols.n_elem; ++pos) w_group(pos) = bs_c(affected_cols(pos), s);
+      vec h_group = sstl::slab_weight_vec(w_group, slab_code);
+
+      while (n_s < S_max) {
+        ++n_s;
+        double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
+        double act_new = sstl::activation_scalar(f_prop, thresh_s, slab_code);
+        if (act_new == act_old) { // unchanged likelihood: ESS accepts
+          bs_c(idx_a, s) = f_prop;
+          break;
+        }
+        vec delta_beta = tau_s * h_group * (act_new - act_old);
+        resid_prop = resid - X.cols(affected_cols) * delta_beta;
+        double ll_prop = sstl::log_lik_general_kernel(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
+        if (ll_prop > log_y_threshold) {
+          bs_c(idx_a, s) = f_prop;
+          resid.swap(resid_prop);
+          ll_curr = ll_prop;
+          break;
+        }
+        if (theta < 0.0) theta_min = theta;
+        else theta_max = theta;
+        theta = R::runif(theta_min, theta_max);
+      }
+      N_s_out(idx_a) += n_s;
+
+      // Then the group's feature-level weights.
+      double a_val = bs_c(idx_a, s);
+      for (uword pos = 0; pos < affected_cols.n_elem; ++pos) {
+        uword j = affected_cols(pos);
+
+        double w_curr = bs_c(j, s);
+        double nu_w = R::rnorm(0.0, 1.0);
+        double log_y_threshold_w = ll_curr + std::log(R::runif(0.0, 1.0));
+        double theta_w = R::runif(0.0, 2.0 * M_PI);
+        double theta_min_w = theta_w - 2.0 * M_PI;
+        double theta_max_w = theta_w;
+        int n_w = 0;
+        double beta_old = sstl::calc_scalar_beta(w_curr, a_val, thresh_s, tau_s, slab_code);
+
+        while (n_w < S_max) {
+          ++n_w;
+          double w_prop = w_curr * std::cos(theta_w) + nu_w * std::sin(theta_w);
+          double beta_new = sstl::calc_scalar_beta(w_prop, a_val, thresh_s, tau_s, slab_code);
+          double delta_beta = beta_new - beta_old;
+          if (delta_beta == 0.0) { // inactive group: ESS accepts
+            bs_c(j, s) = w_prop;
+            break;
+          }
+          resid_prop = resid - X.col(j) * delta_beta;
+          double ll_prop = sstl::log_lik_general_kernel(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
+          if (ll_prop > log_y_threshold_w) {
+            bs_c(j, s) = w_prop;
+            resid.swap(resid_prop);
+            ll_curr = ll_prop;
+            break;
+          }
+          if (theta_w < 0.0) theta_min_w = theta_w;
+          else theta_max_w = theta_w;
+          theta_w = R::runif(theta_min_w, theta_max_w);
+        }
+        N_s_out(j) += n_w;
+      }
+    }
+
+    // Global threshold for this source last.
+    double f_curr = bs_c(idx_a0, s);
+    double nu = R::rnorm(0.0, 1.0);
+    double log_y_threshold = ll_curr + std::log(R::runif(0.0, 1.0));
     double theta = R::runif(0.0, 2.0 * M_PI);
     double theta_min = theta - 2.0 * M_PI;
     double theta_max = theta;
     int n_s = 0;
 
+    vec bs_col = bs_c.col(s);
+    vec bias_old = sstl::calc_bias_vec_group(bs_col, tau_s, group_map, lambda_S(s), slab_code);
+
     while (n_s < S_max) {
       ++n_s;
-      rowvec f_prop_row = f_curr * std::cos(theta) + trans(nu) * std::sin(theta);
-
-      double prop_ll_total = 0.0;
-      std::vector<vec> resid_S_prop(S);
-      for (int s = 0; s < S; ++s) {
-        double thresh_s = sstl::threshold_from_a0(bs_c(idx_a0, s), lambda_S(s));
-        double act_old = sstl::activation_scalar(f_curr(s), thresh_s, slab_code);
-        double act_new = sstl::activation_scalar(f_prop_row(s), thresh_s, slab_code);
-        vec w_vec = bs_c.col(s).subvec(0, p - 1);
-        vec h_group = sstl::slab_weight_vec(w_vec.elem(affected_cols), slab_code);
-        vec delta_beta = tau_S(s) * h_group * (act_new - act_old);
-
-        resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(affected_cols) * delta_beta;
-        prop_ll_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
-      }
-
-      if (prop_ll_total > log_y_threshold) {
-        bs_c.row(idx_a) = f_prop_row;
-        resid_S = resid_S_prop;
-        current_ll_total = prop_ll_total;
+      double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
+      bs_col(idx_a0) = f_prop;
+      vec delta = sstl::calc_bias_vec_group(bs_col, tau_s, group_map, lambda_S(s), slab_code) - bias_old;
+      uvec nz = find(delta != 0.0);
+      if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
+        bs_c(idx_a0, s) = f_prop;
         break;
       }
-
+      resid_prop = resid - X.cols(nz) * delta.elem(nz);
+      double ll_prop = sstl::log_lik_general_kernel(resid_prop, Y_s_cpp[s], sd_y_S(s), fam_code, df);
+      if (ll_prop > log_y_threshold) {
+        bs_c(idx_a0, s) = f_prop;
+        resid.swap(resid_prop);
+        ll_curr = ll_prop;
+        break;
+      }
       if (theta < 0.0) theta_min = theta;
       else theta_max = theta;
       theta = R::runif(theta_min, theta_max);
     }
-    N_s_out(idx_a) = n_s;
-
-    // Then feature-level weights for that group, still updated row-wise across sources.
-    for (uword pos = 0; pos < affected_cols.n_elem; ++pos) {
-      uword j = affected_cols(pos);
-
-      rowvec w_curr = bs_c.row(j);
-      vec nu_w = randn(S);
-      double log_y_threshold_w = current_ll_total + std::log(R::runif(0.0, 1.0));
-      double theta_w = R::runif(0.0, 2.0 * M_PI);
-      double theta_min_w = theta_w - 2.0 * M_PI;
-      double theta_max_w = theta_w;
-      int n_w = 0;
-
-      while (n_w < S_max) {
-        ++n_w;
-        rowvec w_prop_row = w_curr * std::cos(theta_w) + trans(nu_w) * std::sin(theta_w);
-
-        double prop_ll_total = 0.0;
-        std::vector<vec> resid_S_prop(S);
-        for (int s = 0; s < S; ++s) {
-          double thresh_s = sstl::threshold_from_a0(bs_c(idx_a0, s), lambda_S(s));
-          double a_val = bs_c(idx_a, s);
-          double beta_old = sstl::calc_scalar_beta(w_curr(s), a_val, thresh_s, tau_S(s),
-                                                  slab_code);
-          double beta_new = sstl::calc_scalar_beta(w_prop_row(s), a_val, thresh_s, tau_S(s),
-                                                  slab_code);
-          double delta_beta = beta_new - beta_old;
-
-          resid_S_prop[s] = resid_S[s] - X_s_cpp[s].col(j) * delta_beta;
-          prop_ll_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
-        }
-
-        if (prop_ll_total > log_y_threshold_w) {
-          bs_c.row(j) = w_prop_row;
-          resid_S = resid_S_prop;
-          current_ll_total = prop_ll_total;
-          break;
-        }
-
-        if (theta_w < 0.0) theta_min_w = theta_w;
-        else theta_max_w = theta_w;
-        theta_w = R::runif(theta_min_w, theta_max_w);
-      }
-      N_s_out(j) = n_w;
-    }
+    N_s_out(idx_a0) += n_s;
   }
-
-  // Global threshold row across sources.
-  rowvec f_curr = bs_c.row(idx_a0);
-  vec nu = randn(S);
-  double log_y_threshold = current_ll_total + std::log(R::runif(0.0, 1.0));
-  double theta = R::runif(0.0, 2.0 * M_PI);
-  double theta_min = theta - 2.0 * M_PI;
-  double theta_max = theta;
-  int n_s = 0;
-
-  while (n_s < S_max) {
-    ++n_s;
-    rowvec f_prop_row = f_curr * std::cos(theta) + trans(nu) * std::sin(theta);
-
-    double prop_ll_total = 0.0;
-    std::vector<vec> resid_S_prop(S);
-    for (int s = 0; s < S; ++s) {
-      vec bs_col = bs_c.col(s);
-      vec bias_old = sstl::calc_bias_vec_group(bs_col, tau_S(s), group_map, lambda_S(s),
-                                              slab_code);
-      bs_col(idx_a0) = f_prop_row(s);
-      vec bias_new = sstl::calc_bias_vec_group(bs_col, tau_S(s), group_map, lambda_S(s),
-                                              slab_code);
-      resid_S_prop[s] = resid_S[s] - X_s_cpp[s] * (bias_new - bias_old);
-      prop_ll_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
-    }
-
-    if (prop_ll_total > log_y_threshold) {
-      bs_c.row(idx_a0) = f_prop_row;
-      resid_S = resid_S_prop;
-      current_ll_total = prop_ll_total;
-      break;
-    }
-
-    if (theta < 0.0) theta_min = theta;
-    else theta_max = theta;
-    theta = R::runif(theta_min, theta_max);
-  }
-  N_s_out(idx_a0) = n_s;
 
   Rcpp::List resid_S_out(S);
   for (int s = 0; s < S; ++s) resid_S_out[s] = resid_S[s];

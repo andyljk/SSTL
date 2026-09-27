@@ -129,3 +129,11 @@ validate_group_map <- function(group_map, p) {
     stop("group_map must use contiguous labels 1, ..., G.")
   }
 }
+
+#' @keywords internal
+#' @noRd
+as_double_matrix <- function(x) {
+  x <- as.matrix(x)
+  storage.mode(x) <- "double"
+  x
+}
