@@ -74,6 +74,20 @@ fit_group$post_mean[1:10] # Target coefficients
 
 Run the examples in order. `SSTL()` selects TO from target data alone, TL when source lists are supplied, and grouped TL when `group_map` is supplied. `EB = TRUE` estimates thresholds before the main MCMC; `EB = FALSE` skips EB. With `verbose = 1`, stage labels and progress bars show EB followed by MCMC. Intercepts are estimated separately, so do not add an intercept column.
 
+## Simulating data
+
+`simulate_SSTL()` generates a target study and `K` sources with the design of the SSTL simulation studies: AR(1)-correlated Gaussian covariates, `s0` nonzero target coefficients, and informative sources that share the target coefficients while non-informative sources keep half of the target signals and gain `2 * s0` new ones. AFT outcomes are censored at a chosen rate (`cens`, default 0.2) and returned as log times by default.
+
+```r
+dat <- simulate_SSTL(n_T = 100, p = 500, n_k = 200, K = 4, family = "Weibull",
+                     s0 = 20, K_informative = 2, seed = 1)
+fit <- SSTL(dat$X_T, dat$Y_T, X_s = dat$X_s, Y_s = dat$Y_s,
+            C = dat$C_T, C_s = dat$C_s, family = "Weibull", log = FALSE,
+            EB = TRUE, N = 5000, verbose = 1)
+```
+
+`n_k` takes one size for every source or one per source, and `K = 0` generates the target only. Family parameters (`scale`, `df`, `shape`, `precision`) have standard defaults; `n_test` adds a test set from the target model. See `?simulate_SSTL`.
+
 ## More details on model type options
 
 All three model types support `"Gaussian"`, `"Logistic"` (binary 0/1), `"Student-t"` (fixed `df`, default 4), and `"Poisson"` (counts, log link). TO and TL also support `"Negative-binomial"` (counts, log link), `"Gamma"` (positive values, log link), and `"Beta"` (values strictly between 0 and 1, logit link). Family names are case-insensitive.

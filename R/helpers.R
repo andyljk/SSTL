@@ -1,10 +1,3 @@
-# function to generate correlated covariates
-Gen_AR1 <- function(n,p,rho) {
-  if (abs(rho) >= 1) stop("rho must be in (-1, 1).")
-  Sigma  <- toeplitz(rho^(0:(p -1)))          # AR(1) covariance
-  MASS::mvrnorm(n, mu=rep(0,p), Sigma=Sigma)
-}
-
 generate_logC <- function(logT, target_pct) {
   if (target_pct == 0) return(rep(Inf, length(logT)))
   T_time <- as.numeric(exp(logT))

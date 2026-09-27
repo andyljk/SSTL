@@ -1,6 +1,6 @@
 Package: SSTL
 Title: Bayesian Transfer Learning via Neuronized Priors
-Version: 1.1.0
+Version: 1.1.1
 Authors@R:
     person("Jiakun", "Li", email = "li003453@umn.edu", role = c("aut", "cre"))
 Description: Implements Bayesian transfer learning for high-dimensional
@@ -12,8 +12,6 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
 Imports:
     MASS,
-    MCMCpack,
-    truncnorm,
     stats,
     Rcpp
 LinkingTo:

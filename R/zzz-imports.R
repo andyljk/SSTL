@@ -1,3 +1,3 @@
-#' @importFrom stats pnorm qnorm rbinom rgamma rnorm toeplitz
+#' @importFrom stats pnorm qnorm rbinom rexp rgamma rnorm toeplitz uniroot
 
 NULL
