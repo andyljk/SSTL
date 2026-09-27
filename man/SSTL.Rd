@@ -37,9 +37,12 @@ select target-only regression. Predictor columns must match across studies.}
 \item{group_map}{Optional consecutive integer group labels starting at 1,
 one per predictor. Supplying this selects grouped transfer learning.}
 
-\item{family}{Outcome family: 'Gaussian', 'Logistic', 'Student-t', 'Poisson',
-'Negative-binomial', 'Gamma', 'Beta', 'Weibull', 'Lognormal', or 'Loglogistic'.
-Negative-binomial, gamma, and beta are not supported for grouped models.}
+\item{family}{Outcome family: 'Gaussian', 'Logistic' (binary 0/1),
+'Student-t', 'Poisson' or 'Negative-binomial' (nonnegative integer counts,
+log link), 'Gamma' (positive response, log link), 'Beta' (response strictly
+between 0 and 1, logit link), 'Weibull', 'Lognormal', or 'Loglogistic'.
+Case-insensitive. Negative-binomial, gamma, and beta are not supported for
+grouped models.}
 
 \item{EB}{Whether to estimate thresholds by empirical Bayes before MCMC.}
 
@@ -61,29 +64,63 @@ If FALSE, use the supplied logged times. Ignored for general outcome families.}
 
 \item{intercept}{Whether to estimate an intercept in each study.}
 
-\item{slab}{Slab transformation, passed to both EB and MCMC.}
+\item{slab}{Slab transformation, one of 'exp', 'poly', 'nlp', 'nlp2', or
+'guassian'; passed to both EB and MCMC.}
 
-\item{df}{Fixed degrees of freedom for Student-t outcomes.}
+\item{df}{Fixed positive degrees of freedom for Student-t outcomes.}
 
-\item{EB_control}{Named list of EB tuning arguments, such as N, burn, K_block,
-lr, or warm_start (TL only). Other defaults follow the selected EB function.}
+\item{EB_control}{Named list of EB tuning arguments. All models accept N
+(default 5000), burn (1000), S.max (50; 500 for grouped models), block_size
+(1), K_block (iterations per SAEM update, 10), gamma_power (Robbins-Monro
+step exponent, 0.9), lr (learning rate, 0.1), schedule (learning-rate decay
+exponent, 0.5), lambda_min, lambda_max (1e4), and polyak_start (0.9).
+Target-only models also accept optimizer ('legacy' or 'adagrad'),
+adagrad_eps (1e-8), and max_log_step (0.35), with lambda_min 1e-6. Transfer
+models also accept polyak (TRUE) and warm_start (TRUE: ten MCEM iterations of
+300 draws before SAEM), with lambda_min 1e-3. S.max and block_size given in
+... also apply to EB unless set here.}
 
-\item{verbose}{If 1, print stage labels and the existing EB/MCMC progress bars;
+\item{verbose}{If 1, print stage labels and the EB/MCMC progress bars;
 if 0, run quietly.}
 
-\item{...}{Additional arguments to the selected MCMC function, such as
-S.max, block_size, or debug. Arguments also supported by EB are passed to
-that stage. EB's final state replaces initial MCMC states when EB is TRUE.}
+\item{...}{Additional sampler arguments:
+\describe{
+\item{S.max}{Maximum slice iterations per update (100 for target-only,
+500 for transfer models).}
+\item{block_size}{Number of coefficients updated jointly (1).}
+\item{debug}{If TRUE, also return latent draws, slab scales, and slice
+iteration counts.}
+\item{b.c, sd.0, xi, sd_y, b0}{Target-only initial latent vector, prior
+standard deviations of the latent parameters, slab-scale shadow
+variable (1), outcome scale (1), and intercept (0).}
+\item{bt.c, bs.c, xi, xi_s, sig_T, sig_s, b0_T, b0_s}{Transfer-model initial
+target and source latent parameters, slab-scale shadow variables (0.5),
+outcome scales (1), and intercepts (0).}
+\item{xi_prior}{Prior standard deviation of the target slab-scale shadow
+variable in non-grouped transfer models (1).}
+}
+For 'Gaussian' and 'Student-t' the outcome scale is the standard deviation
+or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
+'Beta' the precision. It is fixed at 1 for 'Logistic' and 'Poisson'. EB's
+final state replaces the initial MCMC states when EB is TRUE.}
 }
 \value{
 A list with post_mean, post_median, post_sd, post_interval (95\\% equal-tail
 intervals), and pip (posterior probabilities of nonzero target coefficients).
-Summaries exclude burn iterations. All fields from the selected sampler are
-retained, including MC_beta and optional debug output. Additional fields are
-lambda (target/source thresholds), EB (the EB result or NULL), and burn.
+Summaries exclude burn iterations. All sampler output is retained, including
+MC_beta and optional debug output. Additional fields are lambda
+(target/source thresholds), EB (the EB result or NULL), and burn.
 }
 \description{
 Selects target-only, transfer learning, or grouped transfer learning from the
 supplied data. When EB is enabled, estimates thresholds first and continues
-from the fitted state with fixed thresholds in the main MCMC run.
+from the fitted state with fixed thresholds in the main MCMC run. Both stages
+run in compiled code.
+}
+\details{
+Shape and precision parameters are updated by log-scale
+Metropolis-Hastings with proposal standard deviation 0.3 (0.1 for other
+scales and for grouped models). The negative-binomial shape has an
+inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta
+precision have Gamma(shape = 0.01, rate = 0.01) priors.
 }

@@ -3,18 +3,20 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp17)]]
 
-#include "sstl_helpers.h"
+#include "sstl_updates.h"
 
 using namespace Rcpp;
 using namespace arma;
 
+namespace sstl {
+
+
 // --- MAIN FUNCTION ---
 
-// [[Rcpp::export]]
-List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
-                       const Rcpp::List& id, const arma::vec& sd_0,
+void update_blocks_aft(arma::vec& b_c, arma::vec& resid, const arma::mat& X, const arma::vec& Y, const arma::vec& C,
+                       const std::vector<arma::uvec>& id, const arma::vec& sd_0,
                        double lambda, double tau, double sd_y, int S_max,
-                       int fam_code, int slab_code) {
+                       int fam_code, int slab_code, arma::vec& N_s) {
 
   int p = X.n_cols;
   int K = id.size();
@@ -28,12 +30,11 @@ List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const
   vec beta = sstl::get_beta(w, a, tau, a0, lambda, slab_code);
   double current_ll = sstl::log_lik_aft(resid, Y, C, sd_y, fam_code);
 
-  vec N_s = zeros(K);
+  N_s.zeros(K);
 
   for(int k = 0; k < K; k++) {
     // Get parameter indices for this block (0-based)
-    IntegerVector idx_r = id[k];
-    uvec idx = as<uvec>(idx_r) - 1;
+    const uvec& idx = id[k];
 
     // --- A. SETUP ESS ---
     vec f_curr = b_c.elem(idx);
@@ -129,16 +130,12 @@ List update_blocks_aft(arma::vec b_c, arma::vec resid, const arma::mat& X, const
     N_s(k) = n_s;
   }
 
-  return List::create(Named("b_c") = b_c,
-                      Named("resid") = resid,
-                      Named("N_s") = N_s);
 }
 
 
-// [[Rcpp::export]]
 double update_sigma_to_aft(const arma::vec& resid, const arma::vec& Y, const arma::vec& C,
                            double current_sigma, int fam_code,
-                           double step_size=0.1) {
+                           double step_size) {
   // Metropolis-Hastings Step
   double log_sigma_curr = log(current_sigma);
   double log_sigma_prop = R::rnorm(log_sigma_curr, step_size);
@@ -156,11 +153,9 @@ double update_sigma_to_aft(const arma::vec& resid, const arma::vec& Y, const arm
 
 
 
-// [[Rcpp::export]]
-List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
-                      const arma::vec& Y_scale, arma::vec resid, const arma::vec& Y, const arma::vec& C,
-                      double sd_y, double sd_prior = 10.0,
-                      int fam_code = 1) {
+double update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
+                      const arma::vec& Y_scale, arma::vec& resid, const arma::vec& Y, const arma::vec& C,
+                      double sd_y, double sd_prior, int fam_code) {
 
   // 1. Setup ESS for the shadow variable
   double nu = R::rnorm(0, sd_prior);
@@ -209,15 +204,12 @@ List update_scale_aft(double xi_curr, // Current Shadow Variable for Tau
     }
   }
 
-  return List::create(Named("xi") = xi_prop,
-                      Named("resid") = resid);
+  return xi_prop;
 }
 
 
-// [[Rcpp::export]]
-List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& Y, const arma::vec& C,
-                             double sd_y, int fam_code,
-                             double sd_prior = 10.0) {
+double update_intercept_to_aft(double b0_curr, arma::vec& resid, const arma::vec& Y, const arma::vec& C,
+                             double sd_y, int fam_code, double sd_prior) {
 
   // Current residual is assumed to be Y - b0_curr - X * beta
   double nu = R::rnorm(0, sd_prior);
@@ -258,6 +250,7 @@ List update_intercept_to_aft(double b0_curr, arma::vec resid, const arma::vec& Y
     }
   }
 
-  return List::create(Named("b0") = b0_prop,
-                      Named("resid") = resid);
+  return b0_prop;
 }
+
+} // namespace sstl

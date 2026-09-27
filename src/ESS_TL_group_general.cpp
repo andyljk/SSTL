@@ -2,40 +2,22 @@
 // [[Rcpp::depends(RcppArmadillo)]]
 // [[Rcpp::plugins(cpp17)]]
 
-#include "sstl_helpers.h"
+#include "sstl_updates.h"
 
 using namespace Rcpp;
 using namespace arma;
 
-namespace {
+namespace sstl {
 
-std::vector<arma::vec> as_vec_vec(const Rcpp::List& x_list) {
-  int S = x_list.size();
-  std::vector<arma::vec> out(S);
-  for (int s = 0; s < S; ++s) out[s] = as<arma::vec>(x_list[s]);
-  return out;
-}
 
-std::vector<arma::uvec> as_uvec_groups(const Rcpp::List& id) {
-  int G = id.size();
-  std::vector<arma::uvec> groups(G);
-  for (int g = 0; g < G; ++g) {
-    groups[g] = as<arma::uvec>(id[g]) - 1;
-  }
-  return groups;
-}
-
-} // namespace
-
-// [[Rcpp::export]]
-List update_target_group_general(arma::vec bt_c,
-                             arma::vec resid_T,
-                             const Rcpp::List& resid_S_list,
+void update_target_group_general(arma::vec& bt_c,
+                             arma::vec& resid_T,
+                             std::vector<arma::vec>& resid_S,
                              const arma::mat& X_T,
                              const arma::vec& Y_T,
-                             const Rcpp::List& X_S_list,
-                             const Rcpp::List& Y_s_list,
-                             const Rcpp::List& id,
+                             const std::vector<arma::mat>& X_s_cpp,
+                             const std::vector<arma::vec>& Y_s_cpp,
+                             const std::vector<arma::uvec>& group_cols,
                              const Rcpp::IntegerVector& group_map,
                              const arma::vec& sd_T,
                              double lambda_T,
@@ -44,21 +26,10 @@ List update_target_group_general(arma::vec bt_c,
                              const arma::vec& sd_y_S,
                              int S_max,
                              int fam_code,
-                             int slab_code, double df = 4.0) {
+                             int slab_code, double df, arma::vec& N_t) {
   int p = X_T.n_cols;
-  int S = X_S_list.size();
-  int G = id.size();
-
-  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_S_list);
-  // Reference original numeric responses without copying their data.
-  std::vector<arma::vec> Y_s_cpp;
-  Y_s_cpp.reserve(S);
-  for (int s = 0; s < S; ++s) {
-    Rcpp::NumericVector Y_s = Y_s_list[s];
-    Y_s_cpp.emplace_back(Y_s.begin(), Y_s.size(), false, true);
-  }
-  std::vector<arma::vec> resid_S = as_vec_vec(resid_S_list);
-  std::vector<arma::uvec> group_cols = as_uvec_groups(id);
+  int S = X_s_cpp.size();
+  int G = group_cols.size();
 
   vec w_T = bt_c.subvec(0, p - 1);
   vec a_T = bt_c.subvec(p, p + G - 1);
@@ -72,7 +43,7 @@ List update_target_group_general(arma::vec bt_c,
     current_ll_global += sstl::log_lik_general_kernel(resid_S[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
   }
 
-  vec N_s_out = zeros(p + G + 1);
+  N_t.zeros(p + G + 1);
 
   for (int g = 0; g < G; ++g) {
     const uvec& affected_cols = group_cols[g];
@@ -126,7 +97,7 @@ List update_target_group_general(arma::vec bt_c,
       else theta_max = theta;
       theta = R::runif(theta_min, theta_max);
     }
-    N_s_out(idx_a) = n_s;
+    N_t(idx_a) = n_s;
 
     // Then update the group-specific weights one by one.
     for (uword pos = 0; pos < affected_cols.n_elem; ++pos) {
@@ -181,7 +152,7 @@ List update_target_group_general(arma::vec bt_c,
         else theta_max_w = theta_w;
         theta_w = R::runif(theta_min_w, theta_max_w);
       }
-      N_s_out(j) = n_w;
+      N_t(j) = n_w;
     }
   }
 
@@ -236,41 +207,27 @@ List update_target_group_general(arma::vec bt_c,
     else theta_max = theta;
     theta = R::runif(theta_min, theta_max);
   }
-  N_s_out(idx_a0) = n_s;
-
-  Rcpp::List resid_S_out(S);
-  for (int s = 0; s < S; ++s) resid_S_out[s] = resid_S[s];
-
-  return List::create(Named("bt_c") = bt_c,
-                      Named("resid_T") = resid_T,
-                      Named("resid_S") = resid_S_out,
-                      Named("N_t") = N_s_out);
+  N_t(idx_a0) = n_s;
 }
 
-// [[Rcpp::export]]
-List update_source_joint_group_general(arma::mat bs_c,
-                                   const Rcpp::List& resid_S_list,
-                                   const Rcpp::List& X_s_list,
-                                   const Rcpp::List& Y_s_list,
-                                   const Rcpp::List& id,
+void update_source_joint_group_general(arma::mat& bs_c,
+                                   std::vector<arma::vec>& resid_S,
+                                   const std::vector<arma::mat>& X_s_cpp,
+                                   const std::vector<arma::vec>& Y_s_cpp,
+                                   const std::vector<arma::uvec>& group_cols,
                                    const Rcpp::IntegerVector& group_map,
                                    const arma::vec& lambda_S,
                                    const arma::vec& tau_S,
                                    const arma::vec& sd_y_S,
                                    int S_max,
                                    int fam_code,
-                                   int slab_code, double df = 4.0) {
+                                   int slab_code, double df, arma::vec& N_s) {
   int p = group_map.size();
   int S = bs_c.n_cols;
-  int G = id.size();
+  int G = group_cols.size();
   int idx_a0 = p + G;
 
-  std::vector<arma::mat> X_s_cpp = sstl::mat_views(X_s_list);
-  std::vector<arma::vec> Y_s_cpp = sstl::vec_views(Y_s_list);
-  std::vector<arma::vec> resid_S = as_vec_vec(resid_S_list);
-  std::vector<arma::uvec> group_cols = as_uvec_groups(id);
-
-  vec N_s_out = zeros(p + G + 1); // slice iterations per row, summed over sources
+  N_s.zeros(p + G + 1); // slice iterations per row, summed over sources
   vec resid_prop;
 
   // Sources are conditionally independent given the target: update each source
@@ -322,7 +279,7 @@ List update_source_joint_group_general(arma::mat bs_c,
         else theta_max = theta;
         theta = R::runif(theta_min, theta_max);
       }
-      N_s_out(idx_a) += n_s;
+      N_s(idx_a) += n_s;
 
       // Then the group's feature-level weights.
       double a_val = bs_c(idx_a, s);
@@ -359,7 +316,7 @@ List update_source_joint_group_general(arma::mat bs_c,
           else theta_max_w = theta_w;
           theta_w = R::runif(theta_min_w, theta_max_w);
         }
-        N_s_out(j) += n_w;
+        N_s(j) += n_w;
       }
     }
 
@@ -397,13 +354,8 @@ List update_source_joint_group_general(arma::mat bs_c,
       else theta_max = theta;
       theta = R::runif(theta_min, theta_max);
     }
-    N_s_out(idx_a0) += n_s;
+    N_s(idx_a0) += n_s;
   }
-
-  Rcpp::List resid_S_out(S);
-  for (int s = 0; s < S; ++s) resid_S_out[s] = resid_S[s];
-
-  return List::create(Named("bs_c") = bs_c,
-                      Named("resid_S") = resid_S_out,
-                      Named("N_s") = N_s_out);
 }
+
+} // namespace sstl
