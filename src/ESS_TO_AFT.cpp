@@ -21,20 +21,18 @@ void update_blocks_aft(arma::vec& b_c, arma::vec& resid, const arma::mat& X, con
   int p = X.n_cols;
   int K = id.size();
 
-  // Parse current state
-  vec w = b_c.subvec(0, p-1);
-  vec a = b_c.subvec(p, 2*p-1);
-  double a0 = b_c(2*p);
-
-  // Reconstruct the current slope effects once; residual is passed in
-  vec beta = sstl::get_beta(w, a, tau, a0, lambda, slab_code);
+  // Current slope effects; the threshold only changes in the final (a0) block
+  double threshold = sstl::threshold_from_a0(b_c(2*p), lambda);
+  vec beta = sstl::get_beta(b_c.subvec(0, p-1), b_c.subvec(p, 2*p-1), tau, b_c(2*p), lambda, slab_code);
   double current_ll = sstl::log_lik_aft(resid, Y, C, sd_y, fam_code);
 
   N_s.zeros(K);
+  vec resid_prop;
 
   for(int k = 0; k < K; k++) {
     // Get parameter indices for this block (0-based)
     const uvec& idx = id[k];
+    bool is_a0 = (k == K - 1);
 
     // --- A. SETUP ESS ---
     vec f_curr = b_c.elem(idx);
@@ -52,73 +50,63 @@ void update_blocks_aft(arma::vec& b_c, arma::vec& resid, const arma::mat& X, con
     // --- B. SLICE LOOP ---
     int n_s = 0;
 
-    // PRE-ALLOCATE OUTSIDE THE LOOP
-    vec resid_prop = resid;
-    vec beta_prop;
-    uword start_col = 0, end_col = 0;
+    // Standard blocks hold w (first half) and a (second half) for columns start..start+half-1
+    int half = idx.n_elem / 2;
+    uword start = is_a0 ? 0 : idx(0);
+    vec beta_prop, delta_beta, tau_h;
+    uvec nz;
+    if (is_a0) tau_h = tau * sstl::slab_weight_vec(b_c.subvec(0, p-1), slab_code);
 
     while(n_s < S_max) {
       n_s++;
 
       // 1. Propose new state
       vec f_prop = f_curr * cos(theta) + nu * sin(theta);
-      resid_prop = resid;
 
-      if (k == K - 1) {
-        // CASE 1: Last block (a0) -> Global Update
-        vec b_prop = b_c;
-        b_prop.elem(idx) = f_prop;
-
-        vec w_prop = b_prop.subvec(0, p-1);
-        vec a_prop = b_prop.subvec(p, 2*p-1);
-        double a0_prop = b_prop(2*p);
-
-        beta_prop = sstl::get_beta(w_prop, a_prop, tau, a0_prop, lambda, slab_code);
-        vec delta_beta = beta_prop - beta;
-
-        // Only columns whose coefficient changed enter the residual update
-        uvec nz = find(delta_beta != 0.0);
-        if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
-          b_c.elem(idx) = f_prop;
-          beta = beta_prop;
-          break;
+      // Coefficient change implied by the proposal (only the block's columns, or all for a0)
+      bool changed = false;
+      if (!is_a0) {
+        beta_prop.set_size(half);
+        delta_beta.set_size(half);
+        for (int j = 0; j < half; j++) {
+          beta_prop(j) = sstl::calc_scalar_beta(f_prop(j), f_prop(half + j), threshold, tau, slab_code);
+          delta_beta(j) = beta_prop(j) - beta(start + j);
+          if (delta_beta(j) != 0.0) changed = true;
         }
-        resid_prop -= X.cols(nz) * delta_beta.elem(nz);
-
       } else {
-        // CASE 2: Standard Block (w + a) -> Local Update
-        int half_size = idx.n_elem / 2;
-        start_col = idx(0) % p;
-        end_col = idx(half_size - 1) % p;
-
-        // Extract the proposed w and a ONLY for this specific block
-        vec w_sub_prop = f_prop.subvec(0, half_size - 1);
-        vec a_sub_prop = f_prop.subvec(half_size, idx.n_elem - 1);
-        beta_prop = sstl::get_beta(w_sub_prop, a_sub_prop, tau, a0, lambda, slab_code);
-
-        // Extract the current beta for these specific columns
-        vec beta_sub_curr = beta.subvec(start_col, end_col);
-        vec d_sub = beta_prop - beta_sub_curr;
-        if (!any(d_sub != 0.0)) { // unchanged likelihood: ESS accepts
-          b_c.elem(idx) = f_prop;
-          beta.subvec(start_col, end_col) = beta_prop;
-          break;
+        double threshold_prop = sstl::threshold_from_a0(f_prop(0), lambda);
+        const double* a_ptr = b_c.memptr() + p;
+        beta_prop.set_size(p);
+        for (int j = 0; j < p; j++) {
+          beta_prop(j) = tau_h(j) * sstl::activation_scalar(a_ptr[j], threshold_prop, slab_code);
         }
-        resid_prop -= X.cols(start_col, end_col) * d_sub;
+        delta_beta = beta_prop - beta;
+        nz = find(delta_beta != 0.0);
+        changed = nz.n_elem > 0;
       }
 
-      double ll_prop = sstl::log_lik_aft(resid_prop, Y, C, sd_y, fam_code);
+      // An unchanged beta leaves the likelihood unchanged, so ESS accepts without evaluating it.
+      double ll_prop = current_ll;
+      if (changed) {
+        resid_prop = resid;
+        if (is_a0) resid_prop -= X.cols(nz) * delta_beta.elem(nz);
+        else       resid_prop -= X.cols(start, start + half - 1) * delta_beta;
+        ll_prop = sstl::log_lik_aft(resid_prop, Y, C, sd_y, fam_code);
+      }
 
-      if(ll_prop > log_y_threshold) {
+      if (!changed || ll_prop > log_y_threshold) {
         // ACCEPT
         b_c.elem(idx) = f_prop;
-        if (k == K - 1) {
-          beta = beta_prop;
-        } else {
-          beta.subvec(start_col, end_col) = beta_prop;
+        if (changed) {
+          if (is_a0) {
+            beta = beta_prop;
+            threshold = sstl::threshold_from_a0(f_prop(0), lambda);
+          } else {
+            beta.subvec(start, start + half - 1) = beta_prop;
+          }
+          resid.swap(resid_prop);
+          current_ll = ll_prop;
         }
-        resid = resid_prop;
-        current_ll = ll_prop;
         break;
       } else {
         // REJECT

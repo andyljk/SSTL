@@ -44,6 +44,8 @@ void update_target_group_general(arma::vec& bt_c,
   }
 
   N_t.zeros(p + G + 1);
+  vec resid_T_prop;
+  std::vector<vec> resid_S_prop(S);
 
   for (int g = 0; g < G; ++g) {
     const uvec& affected_cols = group_cols[g];
@@ -72,11 +74,10 @@ void update_target_group_general(arma::vec& bt_c,
       }
       vec delta_beta = tau * h_group * (act_new - act_old);
 
-      vec resid_T_prop = resid_T - X_T.cols(affected_cols) * delta_beta;
+      resid_T_prop = resid_T - X_T.cols(affected_cols) * delta_beta;
       double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
       double ll_S_prop_total = 0.0;
-      std::vector<vec> resid_S_prop(S);
       for (int s = 0; s < S; ++s) {
         resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(affected_cols) * delta_beta;
         ll_S_prop_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
@@ -87,8 +88,8 @@ void update_target_group_general(arma::vec& bt_c,
         bt_c(idx_a) = f_prop;
         a_T(g) = f_prop;
         beta_T.elem(affected_cols) += delta_beta;
-        resid_T = resid_T_prop;
-        resid_S = resid_S_prop;
+        resid_T.swap(resid_T_prop);
+        for (int s = 0; s < S; ++s) resid_S[s].swap(resid_S_prop[s]);
         current_ll_global = prop_ll_global;
         break;
       }
@@ -110,13 +111,13 @@ void update_target_group_general(arma::vec& bt_c,
       double theta_min_w = theta_w - 2.0 * M_PI;
       double theta_max_w = theta_w;
       int n_w = 0;
+      double beta_old = sstl::calc_scalar_beta(w_curr, a_T(g), threshold_T, tau,
+                                              slab_code);
 
       while (n_w < S_max) {
         ++n_w;
         double w_prop = w_curr * std::cos(theta_w) + nu_w * std::sin(theta_w);
 
-        double beta_old = sstl::calc_scalar_beta(w_curr, a_T(g), threshold_T, tau,
-                                                slab_code);
         double beta_new = sstl::calc_scalar_beta(w_prop, a_T(g), threshold_T, tau,
                                                 slab_code);
         double delta_beta = beta_new - beta_old;
@@ -127,11 +128,10 @@ void update_target_group_general(arma::vec& bt_c,
           break;
         }
 
-        vec resid_T_prop = resid_T - X_T.col(j) * delta_beta;
+        resid_T_prop = resid_T - X_T.col(j) * delta_beta;
         double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
         double ll_S_prop_total = 0.0;
-        std::vector<vec> resid_S_prop(S);
         for (int s = 0; s < S; ++s) {
           resid_S_prop[s] = resid_S[s] - X_s_cpp[s].col(j) * delta_beta;
           ll_S_prop_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
@@ -142,8 +142,8 @@ void update_target_group_general(arma::vec& bt_c,
           bt_c(j) = w_prop;
           w_T(j) = w_prop;
           beta_T(j) = beta_new;
-          resid_T = resid_T_prop;
-          resid_S = resid_S_prop;
+          resid_T.swap(resid_T_prop);
+          for (int s = 0; s < S; ++s) resid_S[s].swap(resid_S_prop[s]);
           current_ll_global = prop_ll_global;
           break;
         }
@@ -165,12 +165,16 @@ void update_target_group_general(arma::vec& bt_c,
   double theta_min = theta - 2.0 * M_PI;
   double theta_max = theta;
   int n_s = 0;
+  vec tau_h = tau * sstl::slab_weight_vec(w_T, slab_code);
+  vec beta_T_prop(p);
 
   while (n_s < S_max) {
     ++n_s;
     double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
-    vec beta_T_prop = sstl::get_beta_group(w_T, a_T, group_map, tau, f_prop, lambda_T,
-                                          slab_code);
+    double threshold_prop = sstl::threshold_from_a0(f_prop, lambda_T);
+    for (int j = 0; j < p; ++j) {
+      beta_T_prop(j) = tau_h(j) * sstl::activation_scalar(a_T(group_map[j] - 1), threshold_prop, slab_code);
+    }
     vec delta_beta = beta_T_prop - beta_T;
     uvec nz = find(delta_beta != 0.0);
     if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
@@ -181,11 +185,10 @@ void update_target_group_general(arma::vec& bt_c,
       break;
     }
 
-    vec resid_T_prop = resid_T - X_T.cols(nz) * delta_beta.elem(nz);
+    resid_T_prop = resid_T - X_T.cols(nz) * delta_beta.elem(nz);
     double ll_T_prop = sstl::log_lik_general_kernel(resid_T_prop, Y_T, sd_y_T, fam_code, df);
 
     double ll_S_prop_total = 0.0;
-    std::vector<vec> resid_S_prop(S);
     for (int s = 0; s < S; ++s) {
       resid_S_prop[s] = resid_S[s] - X_s_cpp[s].cols(nz) * delta_beta.elem(nz);
       ll_S_prop_total += sstl::log_lik_general_kernel(resid_S_prop[s], Y_s_cpp[s], sd_y_S(s), fam_code, df);
@@ -197,8 +200,8 @@ void update_target_group_general(arma::vec& bt_c,
       a0_T = f_prop;
       threshold_T = sstl::threshold_from_a0(a0_T, lambda_T);
       beta_T = beta_T_prop;
-      resid_T = resid_T_prop;
-      resid_S = resid_S_prop;
+      resid_T.swap(resid_T_prop);
+      for (int s = 0; s < S; ++s) resid_S[s].swap(resid_S_prop[s]);
       current_ll_global = prop_ll_global;
       break;
     }
@@ -331,12 +334,17 @@ void update_source_joint_group_general(arma::mat& bs_c,
 
     vec bs_col = bs_c.col(s);
     vec bias_old = sstl::calc_bias_vec_group(bs_col, tau_s, group_map, lambda_S(s), slab_code);
+    vec tau_h = tau_s * sstl::slab_weight_vec(bs_col.subvec(0, p - 1), slab_code);
+    vec bias_prop(p);
 
     while (n_s < S_max) {
       ++n_s;
       double f_prop = f_curr * std::cos(theta) + nu * std::sin(theta);
-      bs_col(idx_a0) = f_prop;
-      vec delta = sstl::calc_bias_vec_group(bs_col, tau_s, group_map, lambda_S(s), slab_code) - bias_old;
+      double thresh_prop = sstl::threshold_from_a0(f_prop, lambda_S(s));
+      for (int j = 0; j < p; ++j) {
+        bias_prop(j) = tau_h(j) * sstl::activation_scalar(bs_col(p + group_map[j] - 1), thresh_prop, slab_code);
+      }
+      vec delta = bias_prop - bias_old;
       uvec nz = find(delta != 0.0);
       if (nz.n_elem == 0) { // unchanged likelihood: ESS accepts
         bs_c(idx_a0, s) = f_prop;

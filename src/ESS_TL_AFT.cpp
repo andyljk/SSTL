@@ -183,12 +183,14 @@ void update_source_joint_aft(arma::mat& bs_c, // (2p+1) x S matrix
       int n_s = 0;
 
       double beta_old = 0.0;
-      vec w_s, a_s, bias_old, bias_prop, delta;
+      vec w_s, a_s, bias_old, bias_prop, delta, tau_h;
       uvec nz;
       if (is_a0) {
         w_s = bs_c.col(s).subvec(0, p-1);
         a_s = bs_c.col(s).subvec(p, 2*p-1);
         bias_old = sstl::get_beta(w_s, a_s, tau_s, f_curr, lambda_s, slab_code);
+        tau_h = tau_s * sstl::slab_weight_vec(w_s, slab_code);
+        bias_prop.set_size(p);
       } else {
         beta_old = sstl::calc_scalar_beta(bs_c(k, s), bs_c(k+p, s), threshold, tau_s, slab_code);
       }
@@ -199,7 +201,8 @@ void update_source_joint_aft(arma::mat& bs_c, // (2p+1) x S matrix
 
         bool changed;
         if (is_a0) {
-          bias_prop = sstl::get_beta(w_s, a_s, tau_s, f_prop, lambda_s, slab_code);
+          double threshold_prop = sstl::threshold_from_a0(f_prop, lambda_s);
+          for (int i = 0; i < p; i++) bias_prop(i) = tau_h(i) * sstl::activation_scalar(a_s(i), threshold_prop, slab_code);
           delta = bias_prop - bias_old;
           nz = find(delta != 0.0);
           changed = nz.n_elem > 0;
