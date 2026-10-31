@@ -44,6 +44,10 @@
 #'   ... also apply to EB unless set here.
 #' @param verbose If 1, print stage labels and the EB/MCMC progress bars;
 #'   if 0, run quietly.
+#' @param sampler Update of the latent coefficient blocks in EB and MCMC:
+#'   'AGESS' (default), adaptive generalized elliptical slice sampling (Marco
+#'   and Tokdar, arXiv:2605.21659), or 'ESS', plain elliptical slice sampling
+#'   as in SSTL 1.1.2 (identical output).
 #' @param ... Additional sampler arguments:
 #'   \describe{
 #'     \item{S.max}{Maximum slice iterations per update (100 for target-only,
@@ -64,7 +68,13 @@
 #'   or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
 #'   'Beta' the precision. It is fixed at 1 for 'Logistic' and 'Poisson'. EB's
 #'   final state replaces the initial MCMC states when EB is TRUE.
-#' @details Shape and precision parameters are updated by log-scale
+#' @details AGESS centres and scales each block's ellipse on an adaptive
+#'   estimate of its posterior mean and covariance (t auxiliary with 6 degrees
+#'   of freedom; the prior-centred kernel with probability 0.05; adaptation
+#'   copied on the AirMCMC schedule). It runs over the whole chain, EB
+#'   included, so draws differ from ESS for the same seed.
+#'
+#'   Shape and precision parameters are updated by log-scale
 #'   Metropolis-Hastings with proposal standard deviation 0.3 (0.1 for other
 #'   scales and for grouped models). The negative-binomial shape has an
 #'   inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta
@@ -79,7 +89,7 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
                  family="Gaussian", EB=FALSE, N=5000, burn=floor(N / 2),
                  lambda=NULL, lambda_s=NULL, C=NULL, C_s=NULL, log=TRUE,
                  intercept=TRUE, slab="exp", df=4,
-                 EB_control=list(), verbose=1, ...) {
+                 EB_control=list(), verbose=1, sampler="AGESS", ...) {
   X <- as_double_matrix(X)
   Y <- as.numeric(Y)
   X_s <- lapply(X_s, as_double_matrix)
@@ -92,6 +102,8 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
   }
   if (any(vapply(X_s, ncol, numeric(1)) != p)) stop("Source design matrices must have the same columns as X.")
   if (length(N) != 1 || !is.finite(N) || N < 1 || N != floor(N)) stop("N must be a positive integer.")
+  sampler <- toupper(sampler)
+  if (length(sampler) != 1 || !sampler %in% c("AGESS", "ESS")) stop("sampler must be 'AGESS' or 'ESS'.")
   if (length(burn) != 1 || !is.finite(burn) || burn < 0 || burn != floor(burn) || burn >= N) {
     stop("burn must be a nonnegative integer smaller than N.")
   }
@@ -162,7 +174,7 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
   no_scale <- !aft && fam_code %in% c(2, 4)
   mcmc <- list(N = N, S.max = opt("S.max", if (transfer) 500 else 100),
                block_size = opt("block_size", 1), debug = isTRUE(opt("debug", FALSE)),
-               xi_prior = opt("xi_prior", 1))
+               xi_prior = opt("xi_prior", 1), agess = sampler == "AGESS")
 
   # ---- EB settings
   eb <- NULL

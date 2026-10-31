@@ -3,6 +3,7 @@
 // [[Rcpp::plugins(cpp17)]]
 
 #include "sstl_updates.h"
+#include "sstl_agess.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -10,7 +11,8 @@ using namespace arma;
 // Chains, empirical Bayes and the two entry points called by SSTL().
 // Each chain runs the Gibbs sweep of the former R samplers (same update order
 // and settings); EB (burn-in, MCEM warm start, SAEM with Polyak averaging)
-// runs the same chains in blocks.
+// runs the same chains in blocks. The latent coefficient blocks are updated by
+// AGESS (sstl_agess.h) or, with sampler = "ESS", by plain ESS.
 
 namespace {
 
@@ -102,6 +104,12 @@ struct TOChain {
   double xi, sd_y, b0, lambda;
   vec resid, N_s;
 
+  // AGESS state: one per block, the iteration counter and the AirMCMC schedule
+  bool agess = false;
+  std::vector<sstl::Adapt> ad;
+  int ag_iter = 1, n_j = 2, N_J = 2;
+  double one_d_until = 0.0;
+
   TOChain(const mat& X_, const vec& Y_, const vec& C_, Family fam_, int slab_, bool intercept_)
     : X(X_), Y(Y_), C(C_), fam(fam_), slab(slab_), intercept(intercept_) {}
 
@@ -112,13 +120,40 @@ struct TOChain {
   }
   void reset_resid() { resid = Y - b0 - X * beta(); }
 
+  // Adaptive states for the current blocks and prior sds, kept while they stay the same.
+  void prepare_agess() {
+    bool same = ad.size() == id.size();
+    for (size_t k = 0; same && k < id.size(); ++k) {
+      vec sd = sd_0.elem(id[k]);
+      same = ad[k].sd.n_elem == sd.n_elem && all(ad[k].sd == sd);
+    }
+    if (same) return;
+    ad.clear();
+    for (const uvec& idx : id) ad.push_back(sstl::new_adapt(sd_0.elem(idx)));
+  }
+
   void step() {
     int fc = fam.code;
     if (intercept) {
       b0 = fam.aft ? sstl::update_intercept_to_aft(b0, resid, Y, C, sd_y, fc, 2.0)
                    : sstl::update_intercept_to_general(b0, resid, Y, sd_y, fc, 2.0, fam.df);
     }
-    if (fam.aft) sstl::update_blocks_aft(b, resid, X, Y, C, id, sd_0, lambda, std::exp(xi), sd_y, S_max, fc, slab, N_s);
+    if (agess) {
+      ++ag_iter;
+      sstl::AgessStep it{(double) ag_iter, std::pow((double) ag_iter, -2.0 / 3.0), ag_iter < one_d_until};
+      std::vector<vec> no_resid;
+      std::vector<mat> no_X;
+      auto no_source = [](int, const vec&) { return 0.0; };
+      if (fam.aft) {
+        sstl::agess_update_target(b, resid, no_resid, X, no_X, id, ad, it, lambda, std::exp(xi), S_max, slab,
+                                  [&](const vec& r) { return sstl::log_lik_aft(r, Y, C, sd_y, fc); }, no_source, N_s);
+      } else {
+        sstl::agess_update_target(b, resid, no_resid, X, no_X, id, ad, it, lambda, std::exp(xi), S_max, slab,
+                                  [&](const vec& r) { return sstl::log_lik_general_kernel(r, Y, sd_y, fc, fam.df); },
+                                  no_source, N_s);
+      }
+    }
+    else if (fam.aft) sstl::update_blocks_aft(b, resid, X, Y, C, id, sd_0, lambda, std::exp(xi), sd_y, S_max, fc, slab, N_s);
     else sstl::update_blocks_general(b, resid, X, Y, id, sd_0, lambda, std::exp(xi), sd_y, S_max, fc, slab, fam.df, N_s);
 
     vec Y_scale = Y - b0;
@@ -128,6 +163,12 @@ struct TOChain {
     // Outcome scale, shape or precision (logistic and Poisson have none)
     if (fam.aft) sd_y = sstl::update_sigma_to_aft(resid, Y, C, sd_y, fc, 0.1);
     else if (fc != 2 && fc != 4) sd_y = sstl::update_sigma_to_general(resid, Y, sd_y, fc, fc >= 5 ? 0.3 : 0.1, fam.df);
+
+    if (agess && ag_iter == N_J) { // AirMCMC: copy the background parameters to the active kernels
+      for (sstl::Adapt& A : ad) sstl::agess_copy_background(A);
+      n_j++;
+      N_J += (int) std::floor(std::pow((double) n_j, sstl::AGESS_AIR_BETA));
+    }
   }
 
   // Runs n iterations and returns the a0 draws.
@@ -237,6 +278,14 @@ struct TLChain {
   vec resid_T, beta_T, N_t, N_s;
   std::vector<vec> resid_S;
 
+  // AGESS state (target blocks, or coordinates when grouped; each source's coordinates), the iteration
+  // counter and the AirMCMC schedule
+  bool agess = false;
+  std::vector<sstl::Adapt> ad_T;
+  std::vector<std::vector<sstl::Adapt>> ad_S;
+  int ag_iter = 1, n_j = 2, N_J = 2;
+  double one_d_until = 0.0;
+
   TLChain(const mat& X_T_, const vec& Y_T_, const vec& C_T_,
           const std::vector<mat>& X_s_, const std::vector<vec>& Y_s_, const std::vector<vec>& C_s_,
           Family fam_, int slab_, bool intercept_, Nullable<IntegerVector> group_map_)
@@ -257,6 +306,25 @@ struct TLChain {
     id = grouped ? groups : make_blocks(p(), block_size);
     xi_prior = xi_prior_;
     sd_T = ones(d());
+    if (!agess) return;
+    // Adaptive states for these blocks, kept while the block sizes stay the same
+    std::vector<uvec> blocks = id;
+    if (grouped) {
+      blocks.clear();
+      for (int j = 0; j < d(); ++j) blocks.push_back(uvec{(uword) j});
+    }
+    bool same = ad_T.size() == blocks.size();
+    for (size_t k = 0; same && k < blocks.size(); ++k) same = ad_T[k].mu.n_elem == blocks[k].n_elem;
+    if (!same) {
+      ad_T.clear();
+      for (const uvec& idx : blocks) ad_T.push_back(sstl::new_adapt(ones(idx.n_elem)));
+    }
+    if (ad_S.empty()) {
+      ad_S.resize(S());
+      for (int s = 0; s < S(); ++s) {
+        for (int j = 0; j < d(); ++j) ad_S[s].push_back(sstl::new_adapt(ones(1)));
+      }
+    }
   }
 
   vec coef(const vec& b, double lambda, double tau) const {
@@ -286,6 +354,18 @@ struct TLChain {
 
   void step() {
     int S = this->S(), fc = fam.code;
+    sstl::AgessStep it{0.0, 0.0, false};
+    if (agess) {
+      ++ag_iter;
+      it = sstl::AgessStep{(double) ag_iter, std::pow((double) ag_iter, -2.0 / 3.0), ag_iter < one_d_until};
+    }
+    auto ll_T = [&](const vec& r) {
+      return fam.aft ? sstl::log_lik_aft(r, Y_T, C_T, sig_T, fc) : sstl::log_lik_general_kernel(r, Y_T, sig_T, fc, fam.df);
+    };
+    auto ll_S = [&](int s, const vec& r) {
+      return fam.aft ? sstl::log_lik_aft(r, Y_s[s], C_s[s], sig_s(s), fc)
+                     : sstl::log_lik_general_kernel(r, Y_s[s], sig_s(s), fc, fam.df);
+    };
 
     // Target: intercept, latent coefficients, slab scale, outcome scale
     if (intercept) {
@@ -293,7 +373,12 @@ struct TLChain {
                      : sstl::update_target_intercept_tl_general(b0_T, resid_T, Y_T, sig_T, fc, 2.0, fam.df);
     }
     double tau = std::abs(xi);
-    if (grouped) {
+    if (agess) {
+      if (grouped) sstl::agess_update_target_group(bt, resid_T, resid_S, X_T, X_s, groups, group_map, ad_T, it,
+                                                   lambda_T, tau, S_max, slab, ll_T, ll_S, N_t);
+      else sstl::agess_update_target(bt, resid_T, resid_S, X_T, X_s, id, ad_T, it, lambda_T, tau, S_max, slab,
+                                     ll_T, ll_S, N_t);
+    } else if (grouped) {
       if (fam.aft) sstl::update_target_group_aft(bt, resid_T, resid_S, X_T, Y_T, C_T, X_s, Y_s, C_s, id, group_map, sd_T,
                                                  lambda_T, tau, sig_T, sig_s, S_max, fc, slab, N_t);
       else sstl::update_target_group_general(bt, resid_T, resid_S, X_T, Y_T, X_s, Y_s, id, group_map, sd_T,
@@ -318,15 +403,30 @@ struct TLChain {
     beta_T = coef(bt, lambda_T, std::abs(xi));
     if (has_sigma()) sig_T = sigma_update(resid_T, Y_T, -1, sig_T);
 
-    if (S == 0) return;
+    if (S > 0) step_sources(Y_s_scale, it, ll_S);
 
-    // Sources: intercepts, biases, slab scales, outcome scales
+    if (agess && ag_iter == N_J) { // AirMCMC: copy the background parameters to the active kernels
+      for (sstl::Adapt& A : ad_T) sstl::agess_copy_background(A);
+      for (auto& a_s : ad_S) for (sstl::Adapt& A : a_s) sstl::agess_copy_background(A);
+      n_j++;
+      N_J += (int) std::floor(std::pow((double) n_j, sstl::AGESS_AIR_BETA));
+    }
+  }
+
+  // Sources: intercepts, biases, slab scales, outcome scales
+  template <class LLS>
+  void step_sources(std::vector<vec>& Y_s_scale, const sstl::AgessStep& it, LLS& ll_S) {
+    int S = this->S(), fc = fam.code;
     if (intercept) {
       if (fam.aft) sstl::update_source_intercepts_tl_aft(b0_s, resid_S, Y_s, C_s, sig_s, fc, 2.0);
       else sstl::update_source_intercepts_tl_general(b0_s, resid_S, Y_s, sig_s, fc, 2.0, fam.df);
     }
     vec tau_S = abs(xi_s);
-    if (grouped) {
+    if (agess) {
+      if (grouped) sstl::agess_update_sources_group(bs, resid_S, X_s, groups, group_map, ad_S, it, lambda_s, tau_S,
+                                                    S_max, slab, ll_S, N_s);
+      else sstl::agess_update_sources(bs, resid_S, X_s, ad_S, it, lambda_s, tau_S, S_max, slab, ll_S, N_s);
+    } else if (grouped) {
       if (fam.aft) sstl::update_source_joint_group_aft(bs, resid_S, X_s, Y_s, C_s, id, group_map, lambda_s, tau_S,
                                                        sig_s, S_max, fc, slab, N_s);
       else sstl::update_source_joint_group_general(bs, resid_S, X_s, Y_s, id, group_map, lambda_s, tau_S,
@@ -495,6 +595,14 @@ List sstl_fit_to(const arma::mat& X, const arma::vec& Y, const arma::vec& C,
   int p = X.n_cols;
   bool show = verbose == 1;
   List eb_out;
+  // AGESS forces one-dimensional sweeps of large blocks during the first floor(0.5 N) * ssp iterations
+  ch.agess = mcmc["agess"];
+  int n_total = mcmc["N"];
+  if (eb.isNotNull()) {
+    List ebl(eb);
+    n_total += (int) ebl["burn"] + (int) ebl["N"] / (int) ebl["K_block"] * (int) ebl["K_block"];
+  }
+  ch.one_d_until = std::floor(0.5 * n_total) * sstl::AGESS_SSP;
 
   if (eb.isNotNull()) {
     List ebl(eb);
@@ -507,6 +615,7 @@ List sstl_fit_to(const arma::mat& X, const arma::vec& Y, const arma::vec& C,
     ch.sd_y = eb_init["sd_y"];
     ch.b0 = eb_init["b0"];
     ch.lambda = lambda;
+    if (ch.agess) ch.prepare_agess();
     if (show) Rprintf("Empirical Bayes (%s)\n", label.c_str());
     eb_out = eb_to(ch, ebl, show, width);
     ch.lambda = eb_out["lambda_final"];
@@ -521,6 +630,7 @@ List sstl_fit_to(const arma::mat& X, const arma::vec& Y, const arma::vec& C,
   ch.S_max = mcmc["S.max"];
   ch.id = make_blocks(p, mcmc["block_size"]);
   ch.sd_0 = as<vec>(init["sd.0"]);
+  if (ch.agess) ch.prepare_agess();
   ch.reset_resid();
 
   int N = mcmc["N"];
@@ -579,6 +689,15 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
   int S = ch.S(), p = ch.p(), d = ch.d();
   bool show = verbose == 1;
   List eb_out;
+  // AGESS forces one-dimensional sweeps of large blocks during the first floor(0.5 N) * ssp iterations
+  ch.agess = mcmc["agess"];
+  int n_total = mcmc["N"];
+  if (eb.isNotNull()) {
+    List ebl(eb);
+    n_total += (int) ebl["burn"] + (as<bool>(ebl["warm_start"]) ? 3000 : 0) +
+      (int) ebl["N"] / (int) ebl["K_block"] * (int) ebl["K_block"];
+  }
+  ch.one_d_until = std::floor(0.5 * n_total) * sstl::AGESS_SSP;
 
   auto set_state = [&](const List& st) {
     ch.bt = as<vec>(st["bt.c"]);

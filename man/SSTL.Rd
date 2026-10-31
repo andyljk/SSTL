@@ -24,6 +24,7 @@ SSTL(
   df = 4,
   EB_control = list(),
   verbose = 1,
+  sampler = "AGESS",
   ...
 )
 }
@@ -83,6 +84,11 @@ models also accept polyak (TRUE) and warm_start (TRUE: ten MCEM iterations of
 \item{verbose}{If 1, print stage labels and the EB/MCMC progress bars;
 if 0, run quietly.}
 
+\item{sampler}{Update of the latent coefficient blocks in EB and MCMC:
+'AGESS' (default), adaptive generalized elliptical slice sampling (Marco
+and Tokdar, arXiv:2605.21659), or 'ESS', plain elliptical slice sampling
+as in SSTL 1.1.2 (identical output).}
+
 \item{...}{Additional sampler arguments:
 \describe{
 \item{S.max}{Maximum slice iterations per update (100 for target-only,
@@ -118,6 +124,12 @@ from the fitted state with fixed thresholds in the main MCMC run. Both stages
 run in compiled code.
 }
 \details{
+AGESS centres and scales each block's ellipse on an adaptive
+estimate of its posterior mean and covariance (t auxiliary with 6 degrees
+of freedom; the prior-centred kernel with probability 0.05; adaptation
+copied on the AirMCMC schedule). It runs over the whole chain, EB
+included, so draws differ from ESS for the same seed.
+
 Shape and precision parameters are updated by log-scale
 Metropolis-Hastings with proposal standard deviation 0.3 (0.1 for other
 scales and for grouped models). The negative-binomial shape has an
