@@ -104,6 +104,12 @@ target and source latent parameters, slab-scale shadow variables (0.5),
 outcome scales (1), and intercepts (0).}
 \item{xi_prior}{Prior standard deviation of the target slab-scale shadow
 variable in non-grouped transfer models (1).}
+\item{fix_sigma}{Transfer models: if TRUE, hold sig_T and sig_s fixed during
+the main MCMC instead of updating them (FALSE).}
+\item{ess_ext}{Non-grouped transfer models with sampler = 'ESS', EB = FALSE
+and a hard-indicator slab ('nlp', 'nlp2', 'guassian'): TRUE or a named
+list enabling the extended ESS sampler (see Details). NULL (default)
+leaves the sampler unchanged.}
 }
 For 'Gaussian' and 'Student-t' the outcome scale is the standard deviation
 or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
@@ -135,4 +141,32 @@ Metropolis-Hastings with proposal standard deviation 0.3 (0.1 for other
 scales and for grouped models). The negative-binomial shape has an
 inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta
 precision have Gamma(shape = 0.01, rate = 0.01) priors.
+
+The extended ESS sampler (ess_ext) keeps the ESS sweep and adds moves that
+each leave the same posterior invariant: direct N(0, 1) draws of inactive
+source weights (direct_inactive, TRUE); factor_reps (4) joint target/source
+support proposals per sweep on a block of 1, 2 or 4 coordinates (4 with
+probability quad_prob, 0; otherwise 2 with probability pair_prob, 0.8),
+each a Metropolis-Hastings move whose proposal comes from a working
+Gaussian approximation (irls_iter = 3 iterations, prior sd working_sd = 3
+times the slab scale, a t_weight = 0.2 Student-t3 component, and target
+masks weighted by the source mixture normalizers when mask_correction is
+TRUE); source_pair_reps (0) source-only pair proposals per source;
+interweaving of the slab scales with the active coefficients held fixed
+(asis, TRUE); and with probability ghf_prob (0.1) the GHF kernel: a gate
+refresh given the supports, one joint ESS update of all thresholds, and a
+prior refresh of the full coefficient state when every support is empty.
+With ghf_prob > 0 the chain is uniformly ergodic, which requires
+intercept = FALSE and fixed outcome scales (fix_sigma = TRUE unless the
+family has none). Supported families: 'Gaussian', 'Logistic', 'Poisson' and
+the AFT families. Blocks are drawn from fixed weights: single_weights
+(length p), pairs and pair_weights (two-column matrix of 1-based columns),
+quads and quad_weights (four-column matrix), and source_pair_weights (one
+column of pair weights per source). By default pairs join each predictor to
+its most correlated predictor in the stacked design, quads to its three most
+correlated, and each weight vector puts 20\\% uniformly and 80\\% on blocks
+touching the union of the initial supports (target and sources; target and
+that source for source pairs). outer_ess = FALSE skips the ESS sweep and the
+intercept and scale updates, for testing the added moves alone. Counts of
+proposals and events are returned in ext_counts.
 }

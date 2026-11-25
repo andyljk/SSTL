@@ -4,6 +4,7 @@
 
 #include "sstl_updates.h"
 #include "sstl_agess.h"
+#include "sstl_ext.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -286,6 +287,10 @@ struct TLChain {
   int ag_iter = 1, n_j = 2, N_J = 2;
   double one_d_until = 0.0;
 
+  // Fixed outcome scales, and the optional extension of the ESS sweep (sstl_ext.h)
+  bool fix_sigma = false;
+  sstl::ext::Settings ext;
+
   TLChain(const mat& X_T_, const vec& Y_T_, const vec& C_T_,
           const std::vector<mat>& X_s_, const std::vector<vec>& Y_s_, const std::vector<vec>& C_s_,
           Family fam_, int slab_, bool intercept_, Nullable<IntegerVector> group_map_)
@@ -353,6 +358,10 @@ struct TLChain {
   }
 
   void step() {
+    if (ext.on && !ext.outer_ess) { // added transitions only (for testing them in isolation)
+      sstl::ext::sweep(*this, ext);
+      return;
+    }
     int S = this->S(), fc = fam.code;
     sstl::AgessStep it{0.0, 0.0, false};
     if (agess) {
@@ -401,9 +410,10 @@ struct TLChain {
                  : sstl::update_target_scale_general(xi, sd_0, Y_T_scale, resid_T, Y_s_scale, resid_S,
                                                      Y_T, Y_s, sig_T, sig_s, fc, fam.df);
     beta_T = coef(bt, lambda_T, std::abs(xi));
-    if (has_sigma()) sig_T = sigma_update(resid_T, Y_T, -1, sig_T);
+    if (has_sigma() && !fix_sigma) sig_T = sigma_update(resid_T, Y_T, -1, sig_T);
 
     if (S > 0) step_sources(Y_s_scale, it, ll_S);
+    if (ext.on) sstl::ext::sweep(*this, ext);
 
     if (agess && ag_iter == N_J) { // AirMCMC: copy the background parameters to the active kernels
       for (sstl::Adapt& A : ad_T) sstl::agess_copy_background(A);
@@ -431,6 +441,8 @@ struct TLChain {
                                                        sig_s, S_max, fc, slab, N_s);
       else sstl::update_source_joint_group_general(bs, resid_S, X_s, Y_s, id, group_map, lambda_s, tau_S,
                                                    sig_s, S_max, fc, slab, fam.df, N_s);
+    } else if (ext.direct_inactive) {
+      sstl::ext::update_sources_direct(bs, resid_S, X_s, lambda_s, tau_S, S_max, slab, ll_S, N_s);
     } else {
       if (fam.aft) sstl::update_source_joint_aft(bs, resid_S, X_s, Y_s, C_s, lambda_s, tau_S, sig_s, S_max, fc, slab, N_s);
       else sstl::update_source_joint_general(bs, resid_S, X_s, Y_s, lambda_s, tau_S, sig_s, S_max, fc, slab, fam.df, N_s);
@@ -439,7 +451,7 @@ struct TLChain {
     for (int s = 0; s < S; ++s) Y_s_scale[s] = Y_s[s] - b0_s(s) - X_s[s] * beta_T;
     xi_s = fam.aft ? sstl::update_source_scales_aft(xi_s, 0.2, Y_s_scale, resid_S, Y_s, C_s, sig_s, fc)
                    : sstl::update_source_scales_general(xi_s, 0.2, Y_s_scale, resid_S, Y_s, sig_s, fc, fam.df);
-    if (has_sigma()) {
+    if (has_sigma() && !fix_sigma) {
       for (int s = 0; s < S; ++s) sig_s(s) = sigma_update(resid_S[s], Y_s[s], s, sig_s(s));
     }
   }
@@ -730,6 +742,30 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
     ch.lambda_s = lambda_s;
   }
   ch.configure(mcmc["S.max"], mcmc["block_size"], mcmc["xi_prior"]);
+  ch.fix_sigma = mcmc["fix_sigma"];
+  if (mcmc.containsElementNamed("ext")) {
+    List e = mcmc["ext"];
+    sstl::ext::Settings& E = ch.ext;
+    E.on = true;
+    E.outer_ess = e["outer_ess"];
+    E.direct_inactive = e["direct_inactive"];
+    E.asis = e["asis"];
+    E.mask_correction = e["mask_correction"];
+    E.factor_reps = e["factor_reps"];
+    E.source_pair_reps = e["source_pair_reps"];
+    E.irls_iter = e["irls_iter"];
+    E.pair_prob = e["pair_prob"];
+    E.quad_prob = e["quad_prob"];
+    E.ghf_prob = e["ghf_prob"];
+    E.t_weight = e["t_weight"];
+    E.working_sd = e["working_sd"];
+    E.single_cw = as<vec>(e["single_cw"]);
+    E.pair_cw = as<vec>(e["pair_cw"]);
+    E.quad_cw = as<vec>(e["quad_cw"]);
+    E.pairs = conv_to<umat>::from(as<mat>(e["pairs"]));
+    E.quads = conv_to<umat>::from(as<mat>(e["quads"]));
+    E.source_pair_cw = as<mat>(e["source_pair_cw"]);
+  }
   ch.reset_resid();
 
   int N = mcmc["N"];
@@ -748,6 +784,8 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
     mc_tau_S.set_size(N, S);
   }
 
+  ch.N_t.zeros(K); // stays zero when the extension runs without the outer ESS sweep
+  ch.N_s.zeros(d);
   if (show) Rprintf("Main MCMC (%s)\n", label.c_str());
   ProgressBar pb(N, show, width);
   for (int i = 0; i < N; ++i) {
@@ -795,5 +833,13 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
   lam.tail(S) = ch.lambda_s;
   out["lambda"] = as_numeric(lam);
   if (eb.isNotNull()) out["EB"] = eb_out;
+  if (ch.ext.on) {
+    NumericVector counts = as_numeric(ch.ext.counts);
+    counts.names() = CharacterVector::create(
+      "factor_proposed", "factor_accepted", "factor_support_changed",
+      "source_pair_proposed", "source_pair_accepted", "source_pair_support_changed",
+      "ghf_runs", "ghf_threshold_moves", "ghf_empty_refreshes", "asis_sweeps");
+    out["ext_counts"] = counts;
+  }
   return out;
 }

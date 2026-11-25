@@ -63,6 +63,12 @@
 #'       outcome scales (1), and intercepts (0).}
 #'     \item{xi_prior}{Prior standard deviation of the target slab-scale shadow
 #'       variable in non-grouped transfer models (1).}
+#'     \item{fix_sigma}{Transfer models: if TRUE, hold sig_T and sig_s fixed during
+#'       the main MCMC instead of updating them (FALSE).}
+#'     \item{ess_ext}{Non-grouped transfer models with sampler = 'ESS', EB = FALSE
+#'       and a hard-indicator slab ('nlp', 'nlp2', 'guassian'): TRUE or a named
+#'       list enabling the extended ESS sampler (see Details). NULL (default)
+#'       leaves the sampler unchanged.}
 #'   }
 #'   For 'Gaussian' and 'Student-t' the outcome scale is the standard deviation
 #'   or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
@@ -79,6 +85,34 @@
 #'   scales and for grouped models). The negative-binomial shape has an
 #'   inverse-gamma prior with shape 0.4 and scale 0.3; gamma shape and beta
 #'   precision have Gamma(shape = 0.01, rate = 0.01) priors.
+#'
+#'   The extended ESS sampler (ess_ext) keeps the ESS sweep and adds moves that
+#'   each leave the same posterior invariant: direct N(0, 1) draws of inactive
+#'   source weights (direct_inactive, TRUE); factor_reps (4) joint target/source
+#'   support proposals per sweep on a block of 1, 2 or 4 coordinates (4 with
+#'   probability quad_prob, 0; otherwise 2 with probability pair_prob, 0.8),
+#'   each a Metropolis-Hastings move whose proposal comes from a working
+#'   Gaussian approximation (irls_iter = 3 iterations, prior sd working_sd = 3
+#'   times the slab scale, a t_weight = 0.2 Student-t3 component, and target
+#'   masks weighted by the source mixture normalizers when mask_correction is
+#'   TRUE); source_pair_reps (0) source-only pair proposals per source;
+#'   interweaving of the slab scales with the active coefficients held fixed
+#'   (asis, TRUE); and with probability ghf_prob (0.1) the GHF kernel: a gate
+#'   refresh given the supports, one joint ESS update of all thresholds, and a
+#'   prior refresh of the full coefficient state when every support is empty.
+#'   With ghf_prob > 0 the chain is uniformly ergodic, which requires
+#'   intercept = FALSE and fixed outcome scales (fix_sigma = TRUE unless the
+#'   family has none). Supported families: 'Gaussian', 'Logistic', 'Poisson' and
+#'   the AFT families. Blocks are drawn from fixed weights: single_weights
+#'   (length p), pairs and pair_weights (two-column matrix of 1-based columns),
+#'   quads and quad_weights (four-column matrix), and source_pair_weights (one
+#'   column of pair weights per source). By default pairs join each predictor to
+#'   its most correlated predictor in the stacked design, quads to its three most
+#'   correlated, and each weight vector puts 20\% uniformly and 80\% on blocks
+#'   touching the union of the initial supports (target and sources; target and
+#'   that source for source pairs). outer_ess = FALSE skips the ESS sweep and the
+#'   intercept and scale updates, for testing the added moves alone. Counts of
+#'   proposals and events are returned in ext_counts.
 #' @return A list with post_mean, post_median, post_sd, post_interval (95\% equal-tail
 #'   intervals), and pip (posterior probabilities of nonzero target coefficients).
 #'   Summaries exclude burn iterations. All sampler output is retained, including
@@ -163,7 +197,8 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
   # ---- sampler options passed through ...
   opts <- list(...)
   allowed <- c("S.max", "block_size", "debug",
-               if (transfer) c("bt.c", "bs.c", "xi", "xi_s", "sig_T", "sig_s", "b0_T", "b0_s", if (!grouped) "xi_prior")
+               if (transfer) c("bt.c", "bs.c", "xi", "xi_s", "sig_T", "sig_s", "b0_T", "b0_s", "fix_sigma",
+                               if (!grouped) c("xi_prior", "ess_ext"))
                else c("b.c", "sd.0", "xi", "sd_y", "b0"))
   if (length(opts) && (is.null(names(opts)) || any(!names(opts) %in% allowed))) {
     bad <- if (is.null(names(opts))) "(unnamed)" else setdiff(names(opts), allowed)
@@ -174,7 +209,7 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
   no_scale <- !aft && fam_code %in% c(2, 4)
   mcmc <- list(N = N, S.max = opt("S.max", if (transfer) 500 else 100),
                block_size = opt("block_size", 1), debug = isTRUE(opt("debug", FALSE)),
-               xi_prior = opt("xi_prior", 1), agess = sampler == "AGESS")
+               xi_prior = opt("xi_prior", 1), agess = sampler == "AGESS", fix_sigma = isTRUE(opt("fix_sigma", FALSE)))
 
   # ---- EB settings
   eb <- NULL
@@ -228,6 +263,91 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
       eb$init <- draw_init_tl(opts[c("b0_T", "b0_s")])
       list(b0_T = opt("b0_T", 0), b0_s = opt("b0_s", rep(0, S)))
     } else draw_init_tl(opts)
+
+    # ---- extended ESS sampler
+    ext <- opts$ess_ext
+    if (!is.null(ext)) {
+      if (isTRUE(ext)) ext <- list()
+      if (!is.list(ext) || (length(ext) && (is.null(names(ext)) || any(names(ext) == "")))) {
+        stop("ess_ext must be TRUE or a named list.")
+      }
+      if (sampler != "ESS" || EB || S == 0) stop("ess_ext requires sampler = 'ESS', EB = FALSE and at least one source.")
+      if (!slab_code %in% 3:5) stop("ess_ext requires a hard-indicator slab: 'nlp', 'nlp2' or 'guassian'.")
+      if (!aft && !fam_code %in% c(1, 2, 4)) stop("ess_ext supports 'Gaussian', 'Logistic', 'Poisson' and the AFT families.")
+      defaults <- list(direct_inactive = TRUE, factor_reps = 4, pair_prob = 0.8, quad_prob = 0,
+                       source_pair_reps = 0, asis = TRUE, ghf_prob = 0.1, t_weight = 0.2, working_sd = 3,
+                       irls_iter = 3, mask_correction = TRUE, outer_ess = TRUE,
+                       single_weights = NULL, pairs = NULL, pair_weights = NULL, quads = NULL, quad_weights = NULL,
+                       source_pair_weights = NULL)
+      bad <- setdiff(names(ext), names(defaults))
+      if (length(bad)) stop("Unknown ess_ext setting(s): ", paste(bad, collapse = ", "), ".")
+      ext <- utils::modifyList(defaults, ext)
+      for (nm in c("direct_inactive", "asis", "mask_correction", "outer_ess")) {
+        if (!is.logical(ext[[nm]]) || length(ext[[nm]]) != 1 || is.na(ext[[nm]])) stop("ess_ext$", nm, " must be TRUE or FALSE.")
+      }
+      for (nm in c("factor_reps", "source_pair_reps", "irls_iter")) {
+        if (length(ext[[nm]]) != 1 || !is.finite(ext[[nm]]) || ext[[nm]] < 0 || ext[[nm]] != floor(ext[[nm]])) {
+          stop("ess_ext$", nm, " must be a nonnegative integer.")
+        }
+      }
+      for (nm in c("pair_prob", "quad_prob", "ghf_prob", "t_weight")) {
+        if (length(ext[[nm]]) != 1 || !is.finite(ext[[nm]]) || ext[[nm]] < 0 || ext[[nm]] > 1) {
+          stop("ess_ext$", nm, " must be a probability.")
+        }
+      }
+      if (length(ext$working_sd) != 1 || !is.finite(ext$working_sd) || ext$working_sd <= 0) stop("ess_ext$working_sd must be positive.")
+      if (ext$irls_iter < 1) stop("ess_ext$irls_iter must be at least 1.")
+      if (ext$ghf_prob > 0 && (intercept || !(no_scale || mcmc$fix_sigma))) {
+        stop("ess_ext$ghf_prob > 0 requires intercept = FALSE and fixed outcome scales (fix_sigma = TRUE).")
+      }
+      if (!ext$outer_ess && (intercept || !(no_scale || mcmc$fix_sigma))) {
+        stop("ess_ext$outer_ess = FALSE requires intercept = FALSE and fixed outcome scales (fix_sigma = TRUE).")
+      }
+
+      # Fixed block selectors: correlation-graph neighbours, 20% uniform and 80% on blocks
+      # touching the union of the initial supports
+      B0 <- cbind(init$bt.c, init$bs.c)
+      thr <- qnorm(pnorm(B0[2 * p + 1, ], log.p = TRUE) / c(lambda, lambda_s), log.p = TRUE)
+      active <- sweep(B0[p + seq_len(p), , drop = FALSE], 2, thr, ">")
+      focus <- function(touch) 0.2 / length(touch) + 0.8 * if (any(touch)) touch / sum(touch) else rep(1 / length(touch), length(touch))
+      R_abs <- abs(stats::cor(do.call(rbind, c(list(X), X_s))))
+      diag(R_abs) <- -1
+      nb <- t(apply(R_abs, 1, order, decreasing = TRUE))
+      pairs <- if (is.null(ext$pairs)) unique(t(apply(cbind(seq_len(p), nb[, 1]), 1, sort))) else ext$pairs
+      if (!is.matrix(pairs) || ncol(pairs) != 2 || any(!pairs %in% seq_len(p)) || any(pairs[, 1] == pairs[, 2])) {
+        stop("ess_ext$pairs must be a two-column matrix of distinct predictor indices.")
+      }
+      quads <- if (!is.null(ext$quads)) ext$quads
+               else if (p >= 4) unique(t(apply(cbind(seq_len(p), nb[, 1:3]), 1, sort)))
+               else matrix(0, 0, 4)
+      if (!is.matrix(quads) || ncol(quads) != 4 || any(!quads %in% seq_len(p)) ||
+          any(apply(quads, 1, anyDuplicated) > 0)) {
+        stop("ess_ext$quads must be a four-column matrix of distinct predictor indices.")
+      }
+      if (ext$quad_prob > 0 && nrow(quads) == 0) stop("ess_ext$quad_prob > 0 needs at least four predictors.")
+      touch <- function(blocks, u) rowSums(matrix(u[blocks], nrow = nrow(blocks))) > 0
+      U <- rowSums(active) > 0
+      w <- list(single = if (is.null(ext$single_weights)) focus(U) else ext$single_weights,
+                pair = if (is.null(ext$pair_weights)) focus(touch(pairs, U)) else ext$pair_weights,
+                quad = if (is.null(ext$quad_weights)) (if (nrow(quads)) focus(touch(quads, U)) else numeric(0))
+                       else ext$quad_weights)
+      spw <- if (is.null(ext$source_pair_weights)) {
+        vapply(seq_len(S), function(s) focus(touch(pairs, active[, 1] | active[, s + 1])), numeric(nrow(pairs)))
+      } else ext$source_pair_weights
+      spw <- matrix(spw, nrow = nrow(pairs))
+      if (length(w$single) != p || length(w$pair) != nrow(pairs) || length(w$quad) != nrow(quads) || ncol(spw) != S ||
+          any(!is.finite(unlist(w)) | unlist(w) < 0) || any(!is.finite(spw) | spw < 0) ||
+          sum(w$single) <= 0 || sum(w$pair) <= 0 || any(colSums(spw) <= 0) || (nrow(quads) && sum(w$quad) <= 0)) {
+        stop("ess_ext weights need nonnegative finite values with positive totals: single_weights of length p, ",
+             "pair_weights and source_pair_weights (one column per source) with one row per pair, quad_weights per quad.")
+      }
+      mcmc$ext <- c(ext[c("direct_inactive", "factor_reps", "pair_prob", "quad_prob", "source_pair_reps", "asis",
+                          "ghf_prob", "t_weight", "working_sd", "irls_iter", "mask_correction", "outer_ess")],
+                    list(single_cw = cumsum(w$single), pairs = pairs - 1, pair_cw = cumsum(w$pair),
+                         quads = quads - 1, quad_cw = cumsum(w$quad), source_pair_cw = apply(spw, 2, cumsum)))
+      mcmc$ext$source_pair_cw <- matrix(mcmc$ext$source_pair_cw, nrow = nrow(pairs))
+    }
+
     fit <- sstl_fit_tl(X, Y, if (aft) C else numeric(0), X_s, Y_s, C_s,
                        if (grouped) group_map else NULL,
                        fam_code, aft, df, slab_code, intercept, lambda, as.numeric(lambda_s),
