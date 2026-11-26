@@ -166,7 +166,10 @@ column of pair weights per source). By default pairs join each predictor to
 its most correlated predictor in the stacked design, quads to its three most
 correlated, and each weight vector puts 20\\% uniformly and 80\\% on blocks
 touching the union of the initial supports (target and sources; target and
-that source for source pairs). outer_ess = FALSE skips the ESS sweep and the
+that source for source pairs). These weights are only as good as the
+starting state: start from an EB or pilot state, or pass weights built from
+one, since a random start aims the proposals at arbitrary predictors.
+outer_ess = FALSE skips the ESS sweep and the
 intercept and scale updates, for testing the added moves alone. Counts of
 proposals and events are returned in ext_counts.
 }

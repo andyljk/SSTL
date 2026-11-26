@@ -100,6 +100,9 @@ inline double loglik(const Model& M, const Study& st, const arma::vec& r) {
 
 // Score g and curvature c = -(second derivative) of each observation's log likelihood
 // with respect to its linear predictor (eta = Y - resid; AFT: resid = log time - eta).
+// Used only to build proposals, so the exponential terms (Weibull, Poisson) are evaluated
+// at a capped argument: far from the data a few observations would otherwise get weights
+// like exp(40) and make the small working systems singular.
 inline void eta_derivs(const Model& M, const Study& st, const arma::vec& r, arma::vec& g, arma::vec& c) {
   int n = r.n_elem;
   const arma::vec& Y = *st.Y;
@@ -117,14 +120,14 @@ inline void eta_derivs(const Model& M, const Study& st, const arma::vec& r, arma
         g(i) = Y(i) - mu;
         c(i) = mu * (1.0 - mu);
       } else { // Poisson
-        double mu = std::exp(eta);
+        double mu = std::exp(std::min(eta, 20.0));
         g(i) = Y(i) - mu;
         c(i) = mu;
       }
     } else {
       double z = r(i) / s, ci = (*st.C)(i), lz, lzz;
       if (M.fam == 1) { // Weibull
-        double ez = std::exp(z);
+        double ez = std::exp(std::min(z, 10.0));
         lz = ci - ez;
         lzz = -ez;
       } else if (M.fam == 2) { // log-logistic
@@ -253,16 +256,21 @@ inline SourceProp source_prop(const arma::mat& P, const arma::vec& l, int m, int
 inline void gate_refresh(double* b, const std::vector<char>& active, int p, double lambda) {
   int s = 0;
   for (int i = 0; i < p; ++i) s += active[i];
-  double omega = R::rbeta(s + 1.0, lambda + p - s);                 // 1 - Phi(psi)
-  double psi = R::qnorm(omega, 0.0, 1.0, 0, 0);
-  double a0 = R::qnorm(lambda * R::pnorm(psi, 0.0, 1.0, 1, 1), 0.0, 1.0, 1, 1);
+  // omega = 1 - Phi(psi) ~ Beta(s + 1, lambda + p - s), drawn as the gamma ratio gx / (gx + gy) so that
+  // log Phi(psi) = log(1 - omega) = -log1p(gx / gy) keeps its precision when omega is close to 0 or 1
+  // (a dense support with a small lambda puts omega within rounding of 1). a0 = Phi^{-1}(Phi(psi)^lambda).
+  double gx = R::rgamma(s + 1.0, 1.0), gy = R::rgamma(lambda + p - s, 1.0);
+  double a0 = R::qnorm(-lambda * std::log1p(gx / gy), 0.0, 1.0, 1, 1);
   double thr = threshold_from_a0(a0, lambda);
   b[2 * p] = a0;
   double log_up = R::pnorm(thr, 0.0, 1.0, 0, 1), log_lo = R::pnorm(thr, 0.0, 1.0, 1, 1);
   for (int i = 0; i < p; ++i) {
     double lu = std::log(R::runif(0.0, 1.0));
     b[p + i] = active[i] ? R::qnorm(lu + log_up, 0.0, 1.0, 0, 1) : R::qnorm(lu + log_lo, 0.0, 1.0, 1, 1);
-    if ((b[p + i] > thr) != (bool) active[i]) Rcpp::stop("gate refresh changed the support");
+    if ((b[p + i] > thr) != (bool) active[i]) {
+      Rcpp::stop("gate refresh changed the support (gate %d: %.17g, threshold %.17g, a0 %.17g, %d of %d active, lambda %g)",
+                 i, b[p + i], thr, a0, s, p, lambda);
+    }
   }
 }
 
@@ -329,8 +337,10 @@ inline int factor_move(const Model& M, const Settings& E, std::vector<Study>& st
       for (int k = 1; k < J; ++k) {
         working(M, st[k], XB[k], rc[k], u_star + v_star[k], G[k], r[k]);
         P[k] = G[k] + arma::eye(m, m) / (sdp[k] * sdp[k]);
-        S += G[k] - G[k] * arma::solve(P[k], G[k]);
-        lu += r[k] - G[k] * arma::solve(P[k], r[k]);
+        // With P = G + d I: G - G P^{-1} G = d P^{-1} G and r - G P^{-1} r = d P^{-1} r (no cancellation)
+        double dk = 1.0 / (sdp[k] * sdp[k]);
+        S += dk * arma::solve(P[k], G[k]);
+        lu += dk * arma::solve(P[k], r[k]);
       }
       S = 0.5 * (S + S.t());
       if (it < n_it - 1) {

@@ -1,6 +1,6 @@
 Package: SSTL
 Title: Bayesian Transfer Learning via Neuronized Priors
-Version: 1.3.0
+Version: 1.3.1
 Authors@R:
     person("Jiakun", "Li", email = "li003453@umn.edu", role = c("aut", "cre"))
 Description: Implements Bayesian transfer learning for high-dimensional

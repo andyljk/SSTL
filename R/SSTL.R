@@ -110,7 +110,10 @@
 #'   its most correlated predictor in the stacked design, quads to its three most
 #'   correlated, and each weight vector puts 20\% uniformly and 80\% on blocks
 #'   touching the union of the initial supports (target and sources; target and
-#'   that source for source pairs). outer_ess = FALSE skips the ESS sweep and the
+#'   that source for source pairs). These weights are only as good as the
+#'   starting state: start from an EB or pilot state, or pass weights built from
+#'   one, since a random start aims the proposals at arbitrary predictors.
+#'   outer_ess = FALSE skips the ESS sweep and the
 #'   intercept and scale updates, for testing the added moves alone. Counts of
 #'   proposals and events are returned in ext_counts.
 #' @return A list with post_mean, post_median, post_sd, post_interval (95\% equal-tail
@@ -273,6 +276,9 @@ SSTL <- function(X, Y, X_s=list(), Y_s=list(), group_map=NULL,
       }
       if (sampler != "ESS" || EB || S == 0) stop("ess_ext requires sampler = 'ESS', EB = FALSE and at least one source.")
       if (!slab_code %in% 3:5) stop("ess_ext requires a hard-indicator slab: 'nlp', 'nlp2' or 'guassian'.")
+      if (any(!is.finite(c(lambda, lambda_s)) | c(lambda, lambda_s) <= 0) || mcmc$S.max < 1) {
+        stop("ess_ext requires finite positive lambda and lambda_s, and S.max of at least 1.")
+      }
       if (!aft && !fam_code %in% c(1, 2, 4)) stop("ess_ext supports 'Gaussian', 'Logistic', 'Poisson' and the AFT families.")
       defaults <- list(direct_inactive = TRUE, factor_reps = 4, pair_prob = 0.8, quad_prob = 0,
                        source_pair_reps = 0, asis = TRUE, ghf_prob = 0.1, t_weight = 0.2, working_sd = 3,
