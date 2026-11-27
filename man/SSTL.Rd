@@ -105,11 +105,20 @@ outcome scales (1), and intercepts (0).}
 \item{xi_prior}{Prior standard deviation of the target slab-scale shadow
 variable in non-grouped transfer models (1).}
 \item{fix_sigma}{Transfer models: if TRUE, hold sig_T and sig_s fixed during
-the main MCMC instead of updating them (FALSE).}
-\item{ess_ext}{Non-grouped transfer models with sampler = 'ESS', EB = FALSE
-and a hard-indicator slab ('nlp', 'nlp2', 'guassian'): TRUE or a named
-list enabling the extended ESS sampler (see Details). NULL (default)
-leaves the sampler unchanged.}
+the main MCMC instead of updating them (FALSE). With EB = TRUE, EB still
+estimates them and the main MCMC holds them at EB's final draw.}
+\item{sigma2_prior}{Transfer models with 'Gaussian', 'Student-t' or AFT
+outcomes: shape and scale (a, c) of an inverse-gamma prior on each
+study's squared outcome scale, sigma^2 ~ IG(a, c). 'Gaussian' scales are
+then drawn exactly from IG(a + n / 2, c + RSS / 2); the others by the
+log-scale Metropolis-Hastings step with the prior in its ratio. It also
+applies to the EB stage. NULL (default) keeps the historical update, whose
+implied prior is p(sigma) proportional to 1 / sigma, except with ess_ext,
+which uses c(0.1, 0.1); a fit meant to target the same posterior as an
+ess_ext fit must pass the same sigma2_prior.}
+\item{ess_ext}{Non-grouped transfer models with sampler = 'ESS': TRUE or
+a named list enabling the extended ESS sampler in EB and the main MCMC
+(see Details). NULL (default) leaves the sampler unchanged.}
 }
 For 'Gaussian' and 'Student-t' the outcome scale is the standard deviation
 or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
@@ -117,7 +126,7 @@ or scale; for 'Negative-binomial' and 'Gamma' it is the shape, and for
 final state replaces the initial MCMC states when EB is TRUE.}
 }
 \value{
-A list with post_mean, post_median, post_sd, post_interval (95\\% equal-tail
+A list with post_mean, post_median, post_sd, post_interval (95\% equal-tail
 intervals), and pip (posterior probabilities of nonzero target coefficients).
 Summaries exclude burn iterations. All sampler output is retained, including
 MC_beta and optional debug output. Additional fields are lambda
@@ -144,32 +153,74 @@ precision have Gamma(shape = 0.01, rate = 0.01) priors.
 
 The extended ESS sampler (ess_ext) keeps the ESS sweep and adds moves that
 each leave the same posterior invariant: direct N(0, 1) draws of inactive
-source weights (direct_inactive, TRUE); factor_reps (4) joint target/source
+source weights (direct_inactive, TRUE); factor_reps joint target/source
 support proposals per sweep on a block of 1, 2 or 4 coordinates (4 with
 probability quad_prob, 0; otherwise 2 with probability pair_prob, 0.8),
 each a Metropolis-Hastings move whose proposal comes from a working
-Gaussian approximation (irls_iter = 3 iterations, prior sd working_sd = 3
-times the slab scale, a t_weight = 0.2 Student-t3 component, and target
-masks weighted by the source mixture normalizers when mask_correction is
-TRUE); source_pair_reps (0) source-only pair proposals per source;
-interweaving of the slab scales with the active coefficients held fixed
-(asis, TRUE); and with probability ghf_prob (0.1) the GHF kernel: a gate
-refresh given the supports, one joint ESS update of all thresholds, and a
-prior refresh of the full coefficient state when every support is empty.
-With ghf_prob > 0 the chain is uniformly ergodic, which requires
-intercept = FALSE and fixed outcome scales (fix_sigma = TRUE unless the
-family has none). Supported families: 'Gaussian', 'Logistic', 'Poisson' and
-the AFT families. Blocks are drawn from fixed weights: single_weights
-(length p), pairs and pair_weights (two-column matrix of 1-based columns),
-quads and quad_weights (four-column matrix), and source_pair_weights (one
-column of pair weights per source). By default pairs join each predictor to
-its most correlated predictor in the stacked design, quads to its three most
-correlated, and each weight vector puts 20\\% uniformly and 80\\% on blocks
-touching the union of the initial supports (target and sources; target and
-that source for source pairs). These weights are only as good as the
-starting state: start from an EB or pilot state, or pass weights built from
-one, since a random start aims the proposals at arbitrary predictors.
-outer_ess = FALSE skips the ESS sweep and the
-intercept and scale updates, for testing the added moves alone. Counts of
-proposals and events are returned in ext_counts.
+Gaussian approximation (irls_iter = 3 iterations, prior sd working_sd times
+the slab scale, a t_weight = 0.2 Student-t3 component, and target masks
+weighted by the source mixture normalizers when mask_correction is TRUE);
+source_pair_reps source-only pair proposals per source; exchange_reps
+signed pair exchanges, each swapping the latent weights and gates of two
+correlated predictors (weights multiplied by the sign of their correlation)
+in the target and every source at once; interweaving with the active
+coefficients held fixed (asis, TRUE); and with probability ghf_prob (0.1)
+the GHF kernel: a gate refresh given the supports, one joint ESS update of
+all thresholds, and a prior refresh of the full coefficient state when
+every support is empty. Supported families: 'Gaussian', 'Logistic',
+'Poisson' and the AFT families. The added moves, GHF included, hold the
+intercepts fixed; the ESS sweep updates them as in plain ESS and AGESS
+(an elliptical slice step under their N(0, 2^2) prior). With EB = TRUE the
+extension also runs during EB, whose threshold updates are unchanged.
+
+With a hard-indicator slab ('nlp', 'nlp2', 'guassian') the defaults are
+factor_reps = 4, source_pair_reps = 0, exchange_reps = 0 and
+working_sd = 3; the support proposals integrate the threshold out, the
+interweaving updates the slab scales, and the GHF thresholds are the
+physical ones. With a ReLU-gate slab ('exp', 'poly') the defaults are
+factor_reps = 6, source_pair_reps = 1, exchange_reps = 12 and
+working_sd = 2 (times the prior mean of an active coefficient's size given
+its weight size, slab scale and threshold). The
+support proposals hold each weight's size, the slab scales and the
+thresholds fixed; the interweaving updates the active weight sizes, the
+inactive weights, the slab scales and the thresholds; GHF runs on an
+auxiliary hard selector whose thresholds are decoded into the physical
+thresholds and gates; and the slab-scale updates of the ESS sweep evaluate
+residuals from unit-scale predictions.
+
+Outcome scales are estimated with the inverse-gamma prior sigma2_prior
+(default IG(0.1, 0.1)) unless fix_sigma = TRUE (main MCMC only; EB always
+estimates them). For 'Gaussian' outcomes GHF then integrates each sigma^2
+out and redraws it afterwards, the construction under which the uniform
+ergodicity result for fixed noise extends to estimated noise (shown for
+hard gates and intercept = FALSE; the same argument applies to the ReLU
+selector). With intercept = TRUE, GHF in every family conditions on the
+current intercepts, and for the AFT families it also conditions on the
+current scales; both keep the posterior invariant but are not covered by
+that result. The ReLU kernels keep every gate a finite double strictly on its
+side of the threshold: a proposal that would need a gate within rounding of
+its threshold is rejected, which restricts the posterior to a set of
+essentially full probability.
+
+Blocks are drawn from fixed weights: single_weights (length p), pairs and
+pair_weights (two-column matrix of 1-based columns; exchanges use the same
+pairs and weights), quads and quad_weights (four-column matrix), and
+source_pair_weights (one column of pair weights per source). By default
+quads join each predictor to its three most correlated predictors in the
+stacked design, and single, quad and source-pair weights put 20\% uniformly
+and 80\% on blocks touching the union of the initial supports (target and
+sources; target and that source for source pairs). Pairs join each
+predictor to its most correlated predictor (hard gates), with the same
+20/80 weights, or to its two most correlated predictors (ReLU gates), with
+pair weight the sum of the two endpoints' smoothed single weights (half of
+a predictor's own weight plus a quarter of the weight of each predictor
+that lists it as a neighbour). These weights are only as good as the
+starting state, since a random start aims the proposals at arbitrary
+predictors. With EB = TRUE, EB uses weights from its starting state and the
+main MCMC uses weights recomputed from EB's final state and thresholds;
+without EB, start from a pilot state or pass weights built from one.
+outer_ess = FALSE (only with EB = FALSE, intercept = FALSE and fixed
+scales) skips the ESS sweep and the intercept and scale updates, for
+testing the added moves alone. Counts of
+proposals and events in the main MCMC are returned in ext_counts.
 }

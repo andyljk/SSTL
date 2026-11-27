@@ -5,6 +5,7 @@
 #include "sstl_updates.h"
 #include "sstl_agess.h"
 #include "sstl_ext.h"
+#include "sstl_relu.h"
 
 using namespace Rcpp;
 using namespace arma;
@@ -287,8 +288,11 @@ struct TLChain {
   int ag_iter = 1, n_j = 2, N_J = 2;
   double one_d_until = 0.0;
 
-  // Fixed outcome scales, and the optional extension of the ESS sweep (sstl_ext.h)
+  // Fixed outcome scales, the optional sigma^2 ~ IG(ig_a, ig_c) prior on the outcome scale
+  // (ig_a = 0: the historical log-scale update), and the optional extension of the ESS sweep
+  // (sstl_ext.h, and sstl_relu.h for the ReLU-gate slabs)
   bool fix_sigma = false;
+  double ig_a = 0.0, ig_c = 0.0;
   sstl::ext::Settings ext;
 
   TLChain(const mat& X_T_, const vec& Y_T_, const vec& C_T_,
@@ -353,6 +357,20 @@ struct TLChain {
   bool has_sigma() const { return fam.aft || (fam.code != 2 && fam.code != 4); }
   double sigma_step() const { return (!fam.aft && !grouped && fam.code >= 5) ? 0.3 : 0.1; }
   double sigma_update(const vec& resid, const vec& Y, int s, double sigma) const {
+    if (ig_a > 0.0) {
+      // Gaussian: exact draw of sigma^2 from IG(ig_a + n / 2, ig_c + RSS / 2). Student-t and AFT:
+      // log-scale random walk whose ratio includes the IG prior on sigma^2 and the log-scale Jacobian.
+      if (!fam.aft && fam.code == 1) {
+        return std::sqrt(1.0 / R::rgamma(ig_a + 0.5 * resid.n_elem, 1.0 / (ig_c + 0.5 * dot(resid, resid))));
+      }
+      double ls = std::log(sigma), ls_prop = R::rnorm(ls, sigma_step()), s_prop = std::exp(ls_prop);
+      double ll = fam.aft ? sstl::log_lik_aft(resid, Y, s < 0 ? C_T : C_s[s], sigma, fam.code)
+                          : sstl::log_lik_general(resid, Y, sigma, fam.code, fam.df);
+      double ll_prop = fam.aft ? sstl::log_lik_aft(resid, Y, s < 0 ? C_T : C_s[s], s_prop, fam.code)
+                               : sstl::log_lik_general(resid, Y, s_prop, fam.code, fam.df);
+      double lp = -2.0 * ig_a * (ls_prop - ls) - ig_c * (1.0 / (s_prop * s_prop) - 1.0 / (sigma * sigma));
+      return std::log(R::runif(0.0, 1.0)) < ll_prop - ll + lp ? s_prop : sigma;
+    }
     if (fam.aft) return sstl::update_sigma_jeffreys_tl_aft(resid, Y, s < 0 ? C_T : C_s[s], sigma, 0.1, fam.code);
     return sstl::update_sigma_mh_tl_general(resid, Y, sigma, sigma_step(), fam.code, fam.df);
   }
@@ -399,13 +417,18 @@ struct TLChain {
                                        lambda_T, tau, sig_T, sig_s, S_max, fc, slab, fam.df, N_t);
     }
 
+    // The ReLU extension's stable scale updates build their own responses (sstl_relu.h)
+    bool stable_scale = ext.on && slab <= 2;
     vec Y_T_scale = Y_T - b0_T;
     std::vector<vec> Y_s_scale(S);
-    for (int s = 0; s < S; ++s) {
-      Y_s_scale[s] = Y_s[s] - b0_s(s) - X_s[s] * coef(bs.col(s), lambda_s(s), std::abs(xi_s(s)));
+    if (!stable_scale) {
+      for (int s = 0; s < S; ++s) {
+        Y_s_scale[s] = Y_s[s] - b0_s(s) - X_s[s] * coef(bs.col(s), lambda_s(s), std::abs(xi_s(s)));
+      }
     }
     double sd_0 = grouped ? 2.0 : xi_prior;
-    xi = fam.aft ? sstl::update_target_scale_aft(xi, sd_0, Y_T_scale, resid_T, Y_s_scale, resid_S,
+    if (stable_scale) xi = sstl::ext::scale_target_stable(*this, sd_0, ll_T, ll_S);
+    else xi = fam.aft ? sstl::update_target_scale_aft(xi, sd_0, Y_T_scale, resid_T, Y_s_scale, resid_S,
                                                  Y_T, C_T, Y_s, C_s, sig_T, sig_s, fc)
                  : sstl::update_target_scale_general(xi, sd_0, Y_T_scale, resid_T, Y_s_scale, resid_S,
                                                      Y_T, Y_s, sig_T, sig_s, fc, fam.df);
@@ -448,9 +471,12 @@ struct TLChain {
       else sstl::update_source_joint_general(bs, resid_S, X_s, Y_s, lambda_s, tau_S, sig_s, S_max, fc, slab, fam.df, N_s);
     }
 
-    for (int s = 0; s < S; ++s) Y_s_scale[s] = Y_s[s] - b0_s(s) - X_s[s] * beta_T;
-    xi_s = fam.aft ? sstl::update_source_scales_aft(xi_s, 0.2, Y_s_scale, resid_S, Y_s, C_s, sig_s, fc)
+    if (ext.on && slab <= 2) xi_s = sstl::ext::scale_sources_stable(*this, 0.2, ll_S);
+    else {
+      for (int s = 0; s < S; ++s) Y_s_scale[s] = Y_s[s] - b0_s(s) - X_s[s] * beta_T;
+      xi_s = fam.aft ? sstl::update_source_scales_aft(xi_s, 0.2, Y_s_scale, resid_S, Y_s, C_s, sig_s, fc)
                    : sstl::update_source_scales_general(xi_s, 0.2, Y_s_scale, resid_S, Y_s, sig_s, fc, fam.df);
+    }
     if (has_sigma() && !fix_sigma) {
       for (int s = 0; s < S; ++s) sig_s(s) = sigma_update(resid_S[s], Y_s[s], s, sig_s(s));
     }
@@ -722,6 +748,40 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
     ch.b0_s = as<vec>(st["b0_s"]);
   };
 
+  NumericVector s2p = mcmc["sigma2_prior"];
+  ch.ig_a = s2p[0];
+  ch.ig_c = s2p[1];
+  // The extension runs in EB and in the main MCMC
+  bool has_ext = mcmc.containsElementNamed("ext");
+  List e;
+  if (has_ext) {
+    e = mcmc["ext"];
+    sstl::ext::Settings& E = ch.ext;
+    E.on = true;
+    E.outer_ess = e["outer_ess"];
+    E.direct_inactive = e["direct_inactive"];
+    E.asis = e["asis"];
+    E.mask_correction = e["mask_correction"];
+    E.factor_reps = e["factor_reps"];
+    E.source_pair_reps = e["source_pair_reps"];
+    E.exchange_reps = e["exchange_reps"];
+    E.irls_iter = e["irls_iter"];
+    E.pair_prob = e["pair_prob"];
+    E.quad_prob = e["quad_prob"];
+    E.ghf_prob = e["ghf_prob"];
+    E.t_weight = e["t_weight"];
+    E.working_sd = e["working_sd"];
+    E.single_cw = as<vec>(e["single_cw"]);
+    E.pair_cw = as<vec>(e["pair_cw"]);
+    E.quad_cw = as<vec>(e["quad_cw"]);
+    E.pairs = conv_to<umat>::from(as<mat>(e["pairs"]));
+    E.quads = conv_to<umat>::from(as<mat>(e["quads"]));
+    E.pair_sign = as<vec>(e["pair_sign"]);
+    E.collapse = !aft && fam_code == 1 && ch.ig_a > 0.0; // EB always estimates the outcome scales
+    E.ig_a = ch.ig_a;
+    E.ig_c = ch.ig_c;
+    E.source_pair_cw = as<mat>(e["source_pair_cw"]);
+  }
   if (eb.isNotNull()) {
     List ebl(eb);
     set_state(ebl["init"]);
@@ -736,6 +796,15 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
       ch.b0_T = as<double>(init["b0_T"]);
       ch.b0_s = as<vec>(init["b0_s"]);
     }
+    if (has_ext) { // block weights from EB's final state and thresholds; counts cover the main MCMC only
+      Function reweight = e["reweight"];
+      List w = reweight(wrap(mat(join_rows(ch.bt, ch.bs))), final_lam);
+      ch.ext.single_cw = as<vec>(w["single_cw"]);
+      ch.ext.pair_cw = as<vec>(w["pair_cw"]);
+      ch.ext.quad_cw = as<vec>(w["quad_cw"]);
+      ch.ext.source_pair_cw = as<mat>(w["source_pair_cw"]);
+      ch.ext.counts.zeros();
+    }
   } else {
     set_state(init);
     ch.lambda_T = lambda_T;
@@ -743,29 +812,7 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
   }
   ch.configure(mcmc["S.max"], mcmc["block_size"], mcmc["xi_prior"]);
   ch.fix_sigma = mcmc["fix_sigma"];
-  if (mcmc.containsElementNamed("ext")) {
-    List e = mcmc["ext"];
-    sstl::ext::Settings& E = ch.ext;
-    E.on = true;
-    E.outer_ess = e["outer_ess"];
-    E.direct_inactive = e["direct_inactive"];
-    E.asis = e["asis"];
-    E.mask_correction = e["mask_correction"];
-    E.factor_reps = e["factor_reps"];
-    E.source_pair_reps = e["source_pair_reps"];
-    E.irls_iter = e["irls_iter"];
-    E.pair_prob = e["pair_prob"];
-    E.quad_prob = e["quad_prob"];
-    E.ghf_prob = e["ghf_prob"];
-    E.t_weight = e["t_weight"];
-    E.working_sd = e["working_sd"];
-    E.single_cw = as<vec>(e["single_cw"]);
-    E.pair_cw = as<vec>(e["pair_cw"]);
-    E.quad_cw = as<vec>(e["quad_cw"]);
-    E.pairs = conv_to<umat>::from(as<mat>(e["pairs"]));
-    E.quads = conv_to<umat>::from(as<mat>(e["quads"]));
-    E.source_pair_cw = as<mat>(e["source_pair_cw"]);
-  }
+  if (ch.fix_sigma) ch.ext.collapse = false;
   ch.reset_resid();
 
   int N = mcmc["N"];
@@ -838,7 +885,8 @@ List sstl_fit_tl(const arma::mat& X_T, const arma::vec& Y_T, const arma::vec& C_
     counts.names() = CharacterVector::create(
       "factor_proposed", "factor_accepted", "factor_support_changed",
       "source_pair_proposed", "source_pair_accepted", "source_pair_support_changed",
-      "ghf_runs", "ghf_threshold_moves", "ghf_empty_refreshes", "asis_sweeps");
+      "ghf_runs", "ghf_threshold_moves", "ghf_empty_refreshes", "asis_sweeps",
+      "exchange_proposed", "exchange_accepted");
     out["ext_counts"] = counts;
   }
   return out;

@@ -9,6 +9,8 @@
 //     coefficient state when every support is empty (F).
 // The source sweep can also draw inactive source weights directly from their N(0, 1)
 // conditional (update_sources_direct). Every move leaves the SSTL posterior invariant.
+// The ReLU-gate slabs ('exp', 'poly') use the kernels of sstl_relu.h instead, and both
+// gate types can add signed pair exchanges.
 #include "sstl_helpers.h"
 #include <algorithm>
 
@@ -17,14 +19,20 @@ namespace ext {
 
 struct Settings {
   bool on = false, outer_ess = true, direct_inactive = false, asis = false, mask_correction = true;
-  int factor_reps = 0, source_pair_reps = 0, irls_iter = 3;
+  int factor_reps = 0, source_pair_reps = 0, exchange_reps = 0, irls_iter = 3;
   double pair_prob = 0.8, quad_prob = 0.0, ghf_prob = 0.0, t_weight = 0.2, working_sd = 3.0;
   arma::vec single_cw, pair_cw, quad_cw;  // cumulative selector weights
   arma::umat pairs, quads;                // 0-based coordinates, one block per row
+  arma::vec pair_sign;                    // sign of each pair's design correlation (exchanges)
   arma::mat source_pair_cw;               // cumulative pair weights, one column per source
+  // Gaussian outcomes with estimated noise: GHF integrates each sigma^2 ~ IG(ig_a, ig_c) out
+  // and redraws it afterwards
+  bool collapse = false;
+  double ig_a = 0.0, ig_c = 0.0;
   // factor proposed/accepted/support changed, source pair proposed/accepted/support changed,
-  // GHF runs, GHF threshold moves that changed a coefficient, empty-model refreshes, ASIS updates
-  arma::vec counts = arma::zeros(10);
+  // GHF runs, GHF threshold moves that changed a coefficient, empty-model refreshes, ASIS updates,
+  // exchanges proposed/accepted
+  arma::vec counts = arma::zeros(12);
 };
 
 // One study: the target (index 0) or a source. b points at its latent vector (w, a, a0).
@@ -259,8 +267,16 @@ inline void gate_refresh(double* b, const std::vector<char>& active, int p, doub
   // omega = 1 - Phi(psi) ~ Beta(s + 1, lambda + p - s), drawn as the gamma ratio gx / (gx + gy) so that
   // log Phi(psi) = log(1 - omega) = -log1p(gx / gy) keeps its precision when omega is close to 0 or 1
   // (a dense support with a small lambda puts omega within rounding of 1). a0 = Phi^{-1}(Phi(psi)^lambda).
-  double gx = R::rgamma(s + 1.0, 1.0), gy = R::rgamma(lambda + p - s, 1.0);
-  double a0 = R::qnorm(-lambda * std::log1p(gx / gy), 0.0, 1.0, 1, 1);
+  // A Gamma(lambda + p - s) draw with shape below 1 (lambda < 1, full support) can underflow to 0,
+  // so it is drawn on the log scale as log Gamma(shape + 1) + log(U) / shape.
+  double gx = R::rgamma(s + 1.0, 1.0), sb = lambda + p - s, a0;
+  if (sb >= 1.0) {
+    double gy = R::rgamma(sb, 1.0);
+    a0 = R::qnorm(-lambda * std::log1p(gx / gy), 0.0, 1.0, 1, 1);
+  } else {
+    double ld = std::log(gx) - std::log(R::rgamma(sb + 1.0, 1.0)) - std::log(R::runif(0.0, 1.0)) / sb; // log(gx / gy)
+    a0 = R::qnorm(-lambda * (ld > 0.0 ? ld + std::log1p(std::exp(-ld)) : std::log1p(std::exp(ld))), 0.0, 1.0, 1, 1);
+  }
   double thr = threshold_from_a0(a0, lambda);
   b[2 * p] = a0;
   double log_up = R::pnorm(thr, 0.0, 1.0, 0, 1), log_lo = R::pnorm(thr, 0.0, 1.0, 1, 1);
@@ -491,6 +507,13 @@ inline void asis(const Model& M, Study& st) {
   *st.xi = (R::runif(0.0, 1.0) < 0.5 ? 1.0 : -1.0) * t_new;
 }
 
+// Log likelihood used by the H step of GHF. With E.collapse (Gaussian, sigma^2 ~ IG(a, c)
+// estimated) the noise variance is integrated out: (c + RSS / 2)^-(a + n / 2) up to a constant.
+inline double ghf_ll(const Model& M, const Settings& E, const Study& st, const arma::vec& r) {
+  if (E.collapse) return -(E.ig_a + 0.5 * r.n_elem) * std::log(E.ig_c + 0.5 * arma::dot(r, r));
+  return loglik(M, st, r);
+}
+
 // GHF kernel: G (gate refresh), H (joint ESS on all thresholds), F (empty-model refresh)
 inline void ghf(const Model& M, Settings& E, std::vector<Study>& st) {
   int p = M.p, J = st.size();
@@ -508,7 +531,7 @@ inline void ghf(const Model& M, Settings& E, std::vector<Study>& st) {
       tau_h[j](i) = tau * H(st[j].b[i], M.slab);
       coef[j](i) = st[j].b[p + i] > thr ? tau_h[j](i) : 0.0;
     }
-    ll += loglik(M, st[j], *st[j].resid);
+    ll += ghf_ll(M, E, st[j], *st[j].resid);
   }
   arma::vec f_curr(J), nu(J);
   for (int j = 0; j < J; ++j) {
@@ -532,7 +555,7 @@ inline void ghf(const Model& M, Settings& E, std::vector<Study>& st) {
       arma::uvec nz = arma::find(d != 0.0);
       changed = changed || nz.n_elem > 0;
       resid_prop[j] = *st[j].resid - st[j].X->cols(nz) * d.elem(nz);
-      ll_prop += loglik(M, st[j], resid_prop[j]);
+      ll_prop += ghf_ll(M, E, st[j], resid_prop[j]);
     }
     if (ll_prop > log_y) {
       for (int j = 0; j < J; ++j) {
@@ -646,12 +669,19 @@ void update_sources_direct(arma::mat& bs_c, std::vector<arma::vec>& resid_S, con
   }
 }
 
+// ReLU-gate kernels and the signed pair exchange, defined in sstl_relu.h
+inline int factor_move_relu(const Model& M, const Settings& E, std::vector<Study>& st, const arma::uvec& B, int src);
+inline bool exchange(const Model& M, std::vector<Study>& st, arma::uword i, arma::uword k, double sign);
+inline void interweave_relu(const Model& M, Study& st);
+inline void ghf_relu(const Model& M, Settings& E, std::vector<Study>& st);
+
 // The added transitions, applied after the original ESS sweep of a TLChain. When any of
 // them ran, the chain recomputes its residuals and target coefficients exactly at the end.
 template <class Chain>
 void sweep(Chain& ch, Settings& E) {
   int S = ch.S();
   Model M{ch.fam.code, ch.slab, ch.fam.aft, ch.fam.df, ch.p(), ch.S_max};
+  bool relu = M.slab <= 2;
   std::vector<Study> st(S + 1);
   st[0] = Study{&ch.X_T, &ch.Y_T, ch.fam.aft ? &ch.C_T : nullptr, ch.sig_T, ch.lambda_T, ch.xi_prior,
                 ch.bt.memptr(), &ch.xi, &ch.resid_T};
@@ -670,7 +700,7 @@ void sweep(Chain& ch, Settings& E) {
     } else {
       B = arma::uvec{draw_cum(E.single_cw.memptr(), E.single_cw.n_elem)};
     }
-    int res = factor_move(M, E, st, B, -1);
+    int res = relu ? factor_move_relu(M, E, st, B, -1) : factor_move(M, E, st, B, -1);
     E.counts(0) += 1;
     E.counts(1) += res > 0;
     E.counts(2) += res == 2;
@@ -678,19 +708,44 @@ void sweep(Chain& ch, Settings& E) {
   for (int s = 0; s < S; ++s) {
     for (int r = 0; r < E.source_pair_reps; ++r) {
       arma::uvec B = E.pairs.row(draw_cum(E.source_pair_cw.colptr(s), E.source_pair_cw.n_rows)).t();
-      int res = factor_move(M, E, st, B, s + 1);
+      int res = relu ? factor_move_relu(M, E, st, B, s + 1) : factor_move(M, E, st, B, s + 1);
       E.counts(3) += 1;
       E.counts(4) += res > 0;
       E.counts(5) += res == 2;
     }
   }
+  for (int r = 0; r < E.exchange_reps; ++r) {
+    arma::uword q = draw_cum(E.pair_cw.memptr(), E.pair_cw.n_elem);
+    E.counts(10) += 1;
+    E.counts(11) += exchange(M, st, E.pairs(q, 0), E.pairs(q, 1), E.pair_sign(q));
+  }
   if (E.asis) {
-    for (Study& s : st) asis(M, s);
+    for (Study& s : st) {
+      if (relu) interweave_relu(M, s);
+      else asis(M, s);
+    }
     E.counts(9) += 1;
   }
   bool ran_ghf = E.ghf_prob > 0.0 && R::runif(0.0, 1.0) < E.ghf_prob;
-  if (ran_ghf) ghf(M, E, st);
-  if (E.factor_reps > 0 || E.source_pair_reps > 0 || E.asis || ran_ghf) ch.reset_resid();
+  if (ran_ghf) {
+    if (relu) {
+      ch.reset_resid(); // the ReLU selector decodes from residuals synchronized after interweaving
+      ghf_relu(M, E, st);
+    } else {
+      ghf(M, E, st);
+    }
+  }
+  if (E.factor_reps > 0 || E.source_pair_reps > 0 || E.exchange_reps > 0 || E.asis || ran_ghf) ch.reset_resid();
+  // After a collapsed GHF step, restore each integrated noise variance from its conditional
+  // IG(a + n / 2, c + RSS / 2) before any transition conditions on it again
+  if (ran_ghf && E.collapse) {
+    ch.sig_T = std::sqrt(1.0 / R::rgamma(E.ig_a + 0.5 * ch.resid_T.n_elem,
+                                         1.0 / (E.ig_c + 0.5 * arma::dot(ch.resid_T, ch.resid_T))));
+    for (int s = 0; s < S; ++s) {
+      ch.sig_s(s) = std::sqrt(1.0 / R::rgamma(E.ig_a + 0.5 * ch.resid_S[s].n_elem,
+                                              1.0 / (E.ig_c + 0.5 * arma::dot(ch.resid_S[s], ch.resid_S[s]))));
+    }
+  }
 }
 
 } // namespace ext
